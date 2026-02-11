@@ -37,6 +37,24 @@ jobs:
         working-directory: examples/basic
         run: terraform validate
 
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run pre-commit
+        uses: pre-commit/action@v3.0.1
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -57,9 +75,14 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Terraform Docs (root)
-        uses: terraform-docs/gh-actions@v1.1.0
+        uses: terraform-docs/gh-actions@v1.4.1
         with:
           working-dir: .
+          output-file: README.md
+          output-method: inject
+
+      - name: Ensure docs are up to date
+        run: git diff --exit-code
 
   security:
     runs-on: ubuntu-latest

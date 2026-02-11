@@ -44,6 +44,22 @@ terraform apply
 terraform output wgeasy_ui_url
 ```
 
+## Development
+1) Install pre-commit:
+```
+python3 -m pip install pre-commit
+```
+
+2) Enable hooks:
+```
+pre-commit install
+```
+
+3) Run all checks:
+```
+pre-commit run --all-files
+```
+
 ## Terraform Docs
 <!-- BEGIN_TF_DOCS -->
 <!-- END_TF_DOCS -->
