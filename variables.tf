@@ -81,12 +81,8 @@ variable "wgeasy_password" {
   sensitive   = true
 
   validation {
-    condition = (
-      (var.wgeasy_password == null ? "" : trimspace(var.wgeasy_password)) != ""
-      ) != (
-      (var.wgeasy_password_hash == null ? "" : trimspace(var.wgeasy_password_hash)) != ""
-    )
-    error_message = "Set exactly one of wgeasy_password or wgeasy_password_hash."
+    condition     = var.wgeasy_password == null || trimspace(var.wgeasy_password) != ""
+    error_message = "wgeasy_password must not be empty when set."
   }
 }
 
@@ -95,6 +91,22 @@ variable "wgeasy_password_hash" {
   description = "bcrypt password hash for wg-easy (PASSWORD_HASH). Recommended if you want to avoid plaintext on the VM. Set exactly one of wgeasy_password or wgeasy_password_hash."
   default     = null
   sensitive   = true
+
+  validation {
+    condition     = var.wgeasy_password_hash == null || trimspace(var.wgeasy_password_hash) != ""
+    error_message = "wgeasy_password_hash must not be empty when set."
+  }
+}
+
+check "wgeasy_password_exclusive" {
+  assert {
+    condition = (
+      (var.wgeasy_password == null ? "" : trimspace(var.wgeasy_password)) != ""
+    ) != (
+      (var.wgeasy_password_hash == null ? "" : trimspace(var.wgeasy_password_hash)) != ""
+    )
+    error_message = "Set exactly one of wgeasy_password or wgeasy_password_hash."
+  }
 }
 
 variable "enable_project_oslogin" {

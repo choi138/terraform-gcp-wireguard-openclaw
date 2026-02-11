@@ -59,7 +59,7 @@ jobs:
       - name: Terraform Docs (root)
         uses: terraform-docs/gh-actions@v1.1.0
         with:
-          args: .
+          working-dir: .
 
   security:
     runs-on: ubuntu-latest
