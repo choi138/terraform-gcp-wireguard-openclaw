@@ -1,0 +1,51 @@
+name: Bug report
+description: Report a problem in the module
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please include as much detail as possible.
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear and concise description of the bug.
+      placeholder: Describe the issue and what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Steps that reliably reproduce the behavior.
+      placeholder: |
+        1. terraform init
+        2. terraform plan
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / errors
+      description: Paste relevant output (redact secrets).
+      render: shell
+  - type: input
+    id: version
+    attributes:
+      label: Terraform version
+      placeholder: "terraform version"
+  - type: input
+    id: os
+    attributes:
+      label: OS / environment
+      placeholder: "macOS 14 / Linux / GitHub Actions"
