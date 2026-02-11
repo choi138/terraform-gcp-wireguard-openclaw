@@ -2,20 +2,20 @@ locals {
   vpn_tag      = "wg-vpn"
   openclaw_tag = "openclaw"
   # Trim to avoid accidental newline/space in credentials.
-  wgeasy_password      = var.wgeasy_password == null ? "" : trimspace(var.wgeasy_password)
-  wgeasy_password_hash = var.wgeasy_password_hash == null ? "" : trimspace(var.wgeasy_password_hash)
-  wg_host              = (var.wg_host != null && trimspace(var.wg_host) != "") ? var.wg_host : google_compute_address.vpn_ip.address
-  openclaw_password    = var.openclaw_gateway_password == null ? "" : trimspace(var.openclaw_gateway_password)
-  openclaw_version     = trimspace(var.openclaw_version)
-  openclaw_bot_token   = var.openclaw_telegram_bot_token == null ? "" : trimspace(var.openclaw_telegram_bot_token)
-  openclaw_api_key     = var.openclaw_anthropic_api_key == null ? "" : trimspace(var.openclaw_anthropic_api_key)
+  wgeasy_password        = var.wgeasy_password == null ? "" : trimspace(var.wgeasy_password)
+  wgeasy_password_hash   = var.wgeasy_password_hash == null ? "" : trimspace(var.wgeasy_password_hash)
+  wg_host                = (var.wg_host != null && trimspace(var.wg_host) != "") ? var.wg_host : google_compute_address.vpn_ip.address
+  openclaw_password      = var.openclaw_gateway_password == null ? "" : trimspace(var.openclaw_gateway_password)
+  openclaw_version       = trimspace(var.openclaw_version)
+  openclaw_bot_token     = var.openclaw_telegram_bot_token == null ? "" : trimspace(var.openclaw_telegram_bot_token)
+  openclaw_api_key       = var.openclaw_anthropic_api_key == null ? "" : trimspace(var.openclaw_anthropic_api_key)
   openclaw_model_primary = trimspace(var.openclaw_model_primary)
   openclaw_model_fallbacks = [
     for model in var.openclaw_model_fallbacks : trimspace(model)
     if trimspace(model) != ""
   ]
   openclaw_model_fallbacks_json = jsonencode(local.openclaw_model_fallbacks)
-  openclaw_zone        = (var.openclaw_zone == null || trimspace(var.openclaw_zone) == "") ? var.zone : var.openclaw_zone
+  openclaw_zone                 = (var.openclaw_zone == null || trimspace(var.openclaw_zone) == "") ? var.zone : var.openclaw_zone
 }
 
 provider "google" {
@@ -190,9 +190,9 @@ resource "google_compute_instance" "vpn" {
   }
 
   metadata_startup_script = templatefile("${path.module}/templates/startup.sh.tpl", {
-    wg_host             = local.wg_host
-    wg_port             = var.wg_port
-    wg_default_dns      = var.wg_default_dns
+    wg_host              = local.wg_host
+    wg_port              = var.wg_port
+    wg_default_dns       = var.wg_default_dns
     wgeasy_ui_port       = var.wgeasy_ui_port
     wgeasy_password      = local.wgeasy_password
     wgeasy_password_hash = local.wgeasy_password_hash

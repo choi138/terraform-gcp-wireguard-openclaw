@@ -83,7 +83,7 @@ variable "wgeasy_password" {
   validation {
     condition = (
       (var.wgeasy_password == null ? "" : trimspace(var.wgeasy_password)) != ""
-    ) != (
+      ) != (
       (var.wgeasy_password_hash == null ? "" : trimspace(var.wgeasy_password_hash)) != ""
     )
     error_message = "Set exactly one of wgeasy_password or wgeasy_password_hash."

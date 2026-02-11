@@ -44,6 +44,10 @@ terraform apply
 terraform output wgeasy_ui_url
 ```
 
+## Terraform Docs
+<!-- BEGIN_TF_DOCS -->
+<!-- END_TF_DOCS -->
+
 ## Required variables
 - `project_id`, `region`, `zone`
 - `instance_name`, `machine_type`
