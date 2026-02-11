@@ -1,0 +1,31 @@
+project_id    = "YOUR_GCP_PROJECT_ID"
+region        = "YOUR_REGION"
+zone          = "YOUR_ZONE"
+instance_name = "wg-vpn"
+machine_type  = "e2-micro"
+
+ssh_source_ranges = ["YOUR_PUBLIC_IP/32"]
+ui_source_ranges  = ["YOUR_PUBLIC_IP/32"]
+
+wg_default_dns  = "1.1.1.1"
+wg_port         = 51820
+wgeasy_ui_port  = 51821
+
+# Optional: use a DNS name instead of the static IP
+# wg_host = "vpn.example.com"
+
+# Choose exactly one:
+wgeasy_password = "CHANGE_ME_LONG_PASSWORD"
+# wgeasy_password_hash = "$2y$10$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+# Hash generator (local): docker run --rm ghcr.io/wg-easy/wg-easy:14 wgpw 'YOUR_PASSWORD'
+
+# Optional: enable project-wide OS Login (single metadata item)
+# enable_project_oslogin = true
+
+# OpenClaw (VPN-only)
+openclaw_gateway_password = "CHANGE_ME_STRONG_PASSWORD"
+# openclaw_gateway_port = 18789
+# openclaw_version = "2026.1.30"
+# openclaw_anthropic_api_key = "YOUR_ANTHROPIC_API_KEY" # or use TF_VAR_openclaw_anthropic_api_key
+# openclaw_telegram_bot_token = "123456:ABCDEF..."
+# openclaw_enable_public_ip = false

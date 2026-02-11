@@ -1,0 +1,91 @@
+name: terraform-ci
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.0
+
+      - name: Terraform fmt (root)
+        run: terraform fmt -check
+
+      - name: Terraform init (root)
+        run: terraform init -backend=false
+
+      - name: Terraform validate (root)
+        run: terraform validate
+
+      - name: Terraform fmt (examples/basic)
+        working-directory: examples/basic
+        run: terraform fmt -check
+
+      - name: Terraform init (examples/basic)
+        working-directory: examples/basic
+        run: terraform init -backend=false
+
+      - name: Terraform validate (examples/basic)
+        working-directory: examples/basic
+        run: terraform validate
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+
+      - name: TFLint init
+        run: tflint --init
+
+      - name: TFLint (root)
+        run: tflint
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Terraform Docs (root)
+        uses: terraform-docs/gh-actions@v1.1.0
+        with:
+          args: markdown table .
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: tfsec scan
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          soft_fail: true
+
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        if: ${{ hashFiles('tests/**/*.go') != '' }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Go tests (Terratest)
+        if: ${{ hashFiles('tests/**/*.go') != '' }}
+        run: go test ./tests/...
+
+      - name: No tests found
+        if: ${{ hashFiles('tests/**/*.go') == '' }}
+        run: echo "No tests found under tests/; skipping."
