@@ -53,6 +53,7 @@ python3 -m pip install pre-commit
 2) Enable hooks:
 ```
 pre-commit install
+pre-commit install --hook-type commit-msg
 ```
 
 3) Run all checks:
