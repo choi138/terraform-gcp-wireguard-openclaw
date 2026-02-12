@@ -1,0 +1,13 @@
+{
+  "name": "terraform-gcp-wireguard-openclaw",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "changeset version"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.29.8"
+  }
+}
