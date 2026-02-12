@@ -3,12 +3,18 @@ set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
 
-# Ensure SSH server is installed and running (helps internal access).
-if ! systemctl is-active --quiet ssh; then
+# Ensure SSH server is installed and host keys exist (helps internal access).
+if ! dpkg -s openssh-server >/dev/null 2>&1; then
   apt-get update -y
   apt-get install -y openssh-server
-  systemctl enable --now ssh
 fi
+
+if [ ! -s /etc/ssh/ssh_host_ed25519_key ]; then
+  ssh-keygen -A
+fi
+
+systemctl enable ssh
+systemctl restart ssh || true
 
 # Install Node.js 22 (via NodeSource) if missing.
 if ! command -v node >/dev/null 2>&1; then
