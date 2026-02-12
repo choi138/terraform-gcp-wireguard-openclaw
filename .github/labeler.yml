@@ -1,11 +1,15 @@
 documentation:
-  - "README.md"
-  - "docs/**"
-  - "**/*.md"
+  - changed-files:
+      - any-glob-to-any-file:
+          - "README.md"
+          - "docs/**"
+          - "**/*.md"
 
 enhancement:
-  - "**/*.tf"
-  - "templates/**"
-  - "examples/**"
-  - "tests/**"
-  - ".github/workflows/**"
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.tf"
+          - "templates/**"
+          - "examples/**"
+          - "tests/**"
+          - ".github/workflows/**"
