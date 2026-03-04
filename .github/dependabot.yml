@@ -19,13 +19,3 @@ updates:
       timezone: "Asia/Seoul"
     labels:
       - "dependencies"
-
-  - package-ecosystem: "npm"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-      timezone: "Asia/Seoul"
-    labels:
-      - "dependencies"

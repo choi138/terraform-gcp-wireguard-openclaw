@@ -5,13 +5,15 @@ Terraform module that provisions a GCP WireGuard (wg-easy) VPN plus an OpenClaw 
 ## Resources created
 - 1 WireGuard VM (Ubuntu LTS)
 - 1 OpenClaw VM (Ubuntu LTS, **internal IP only**)
+- 2 dedicated service accounts (VPN/OpenClaw)
+- Secret Manager IAM bindings scoped to referenced secrets only
 - 1 Static External IP (for WireGuard)
 - 5 firewall rules (WireGuard UDP, wg-easy UI, WireGuard SSH, OpenClaw Gateway, OpenClaw SSH)
 - Cloud Router + Cloud NAT (for OpenClaw outbound API access)
 - OS Login enablement (optional, project-level)
 
 ## Layout
-- `main.tf` - resources, networking, firewall, instances, startup scripts
+- `main.tf` - resources, networking, IAM, instances, startup scripts
 - `variables.tf` - inputs and validation
 - `outputs.tf` - outputs
 - `versions.tf` - Terraform/Provider versions
@@ -75,18 +77,45 @@ pre-commit run --all-files
 - `wg_port` (default: 51820)
 - `wgeasy_ui_port` (default: 51821)
 - `wg_host` (optional; defaults to static IP)
-- `wgeasy_password` **or** `wgeasy_password_hash` (set exactly one; both sensitive)
+- **wg-easy credential source (exactly one)**:
+  - `wgeasy_password_secret`
+  - `wgeasy_password_hash_secret`
 - `enable_project_oslogin` (optional; default false)
 - `openclaw_instance_name`, `openclaw_machine_type`
 - `openclaw_internal_ip_address` (optional; pin OpenClaw VM internal IP)
 - `openclaw_gateway_port` (default: 18789)
-- `openclaw_gateway_password` (required, sensitive)
+- `openclaw_gateway_password_secret` (required)
 - `openclaw_version` (default: `2026.1.30`, recommended to pin a patched version)
-- `openclaw_anthropic_api_key` (optional, sensitive; use `TF_VAR_openclaw_anthropic_api_key`)
+- `openclaw_anthropic_api_key_secret` (optional)
 - `openclaw_model_primary` (default: `anthropic/claude-opus-4-6`)
 - `openclaw_model_fallbacks` (default: `["anthropic/claude-opus-4-5"]`)
-- `openclaw_telegram_bot_token` (optional, sensitive)
+- `openclaw_telegram_bot_token_secret` (optional)
 - `openclaw_enable_public_ip` (optional; default false, not recommended)
+
+## Secret Manager setup (required)
+The module supports Secret Manager references in this format:
+- `projects/<project>/secrets/<name>` (auto-uses `versions/latest`)
+- `projects/<project>/secrets/<name>/versions/<version>`
+
+1) Enable Secret Manager API in your project:
+```
+gcloud services enable secretmanager.googleapis.com --project <PROJECT_ID>
+```
+
+2) Create secrets and versions (example):
+```
+printf '%s' 'YOUR_VALUE' | gcloud secrets create openclaw-gateway-password \
+  --project <PROJECT_ID> \
+  --replication-policy=automatic \
+  --data-file=-
+```
+
+3) Set secret reference variables in tfvars.
+
+4) Run `terraform apply`.
+- The module creates dedicated VM service accounts.
+- It grants `roles/secretmanager.secretAccessor` only to referenced secrets.
+- Startup scripts fetch secret payloads at boot via instance identity.
 
 ## Outputs
 - `vpn_public_ip`
@@ -100,11 +129,12 @@ pre-commit run --all-files
 - Do not expose the wg-easy UI to the public internet. Restrict `ui_source_ranges` to your public IP/32.
 - Restrict SSH with `ssh_source_ranges` and use OS Login + SSH keys.
 - Use strong admin passwords and rotate immediately if exposed.
-- Sensitive values (API keys, passwords) are stored in Terraform state. Do not commit or share state files.
+- This module is secret-reference-only for sensitive values. Keep raw secret payloads in Secret Manager, not in tfvars/state.
 
 ## wg-easy configuration
-- If `wgeasy_password` is set, the startup script generates a bcrypt hash via `wgpw` and sets `PASSWORD_HASH`. (`PASSWORD` is not allowed in recent versions.)
-- If `wgeasy_password_hash` is set, it is used directly as `PASSWORD_HASH`. This avoids leaving plaintext on the VM.
+- Supported credential sources are mutually exclusive:
+  - `wgeasy_password_secret`: startup generates bcrypt hash via `wgpw`
+  - `wgeasy_password_hash_secret`: startup uses hash directly as `PASSWORD_HASH`
 - The following are always set: `WG_HOST`, `WG_PORT`, `WG_DEFAULT_DNS`, `PORT`.
 - The UI is exposed over HTTP with `INSECURE=true`, so restrict access.
 - The container image is pinned to `ghcr.io/wg-easy/wg-easy:14` to keep env-based configuration stable. Hash example:
@@ -113,14 +143,20 @@ pre-commit run --all-files
 ## OpenClaw usage
 - The OpenClaw VM has **no external IP** and is reachable only after VPN connection.
 - Connect via `openclaw_gateway_url` after WireGuard is up.
-- Model/key setup:
-  1) (Recommended) Inject locally via env var: `export TF_VAR_openclaw_anthropic_api_key="..."` then `terraform apply`
-  2) Default model is **claude opus 4.6**, with **4.5** as fallback
+- OpenClaw gateway/API/Telegram credentials are read from Secret Manager references.
+- Default model is **claude opus 4.6**, with **4.5** as fallback.
 - Telegram integration:
   1) Create a bot token via BotFather
-  2) Set `openclaw_telegram_bot_token` and run `terraform apply`
-  3) First DM requires approval under the pairing policy
+  2) Set `openclaw_telegram_bot_token_secret`
+  3) Run `terraform apply`
+  4) First DM requires approval under the pairing policy
 - OpenClaw and WireGuard VMs share the same VPC/subnet.
+
+## Migration from plaintext to Secret Manager
+1) Create secrets in Secret Manager for values currently held in tfvars/environment.
+2) Replace plaintext variables with corresponding `*_secret` variables.
+3) Run `terraform apply`.
+4) Remove plaintext secret values from local tfvars/history once validated.
 
 ## Verification checklist
 - Confirm the public IP after `terraform apply`
@@ -128,9 +164,14 @@ pre-commit run --all-files
 - Connect via WireGuard client (QR or config)
 - Confirm traffic is routed through the VPN
 - Access `openclaw_gateway_url` while connected to VPN
+- Confirm startup scripts can read configured Secret Manager references
 
 ## Troubleshooting
 - Firewall/tags: the VM must have the `wg-vpn` tag. Check UDP 51820 and TCP 51821.
+- Secret Manager access issues:
+  - Verify secret reference format (`projects/.../secrets/...[/versions/...]`)
+  - Verify Secret Manager API is enabled
+  - Verify generated VM service account has `roles/secretmanager.secretAccessor` on referenced secrets
 - Docker status:
   - `sudo docker ps`
   - `sudo docker logs wg-easy`
