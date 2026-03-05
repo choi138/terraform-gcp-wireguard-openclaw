@@ -69,6 +69,9 @@ jobs:
       - name: Setup TFLint
         uses: terraform-linters/setup-tflint@v6
 
+      - name: TFLint (root)
+        run: tflint
+
       - name: TFLint init
         working-directory: infra
         run: tflint --init

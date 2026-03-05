@@ -262,7 +262,8 @@ resource "google_compute_instance" "vpn" {
   }
 
   metadata = {
-    enable-oslogin = "TRUE"
+    enable-oslogin         = "TRUE"
+    block-project-ssh-keys = "TRUE"
     startup-script = templatefile("${path.module}/templates/startup.sh.tpl", {
       wg_host                             = local.wg_host
       wg_port                             = var.wg_port
@@ -309,7 +310,8 @@ resource "google_compute_instance" "openclaw" {
   }
 
   metadata = {
-    enable-oslogin = "TRUE"
+    enable-oslogin         = "TRUE"
+    block-project-ssh-keys = "TRUE"
     startup-script = templatefile("${path.module}/templates/startup-openclaw.sh.tpl", {
       openclaw_gateway_port                      = var.openclaw_gateway_port
       openclaw_gateway_password_secret_version   = local.openclaw_password_secret_version

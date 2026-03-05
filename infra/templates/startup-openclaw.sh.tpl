@@ -7,7 +7,7 @@ fetch_secret() {
   local secret_version="$1"
   local token response data_b64 value
 
-  token="$(curl -fsS -H "Metadata-Flavor: Google" \
+  token="$(curl -fsS --connect-timeout 5 --max-time 20 --retry 5 --retry-delay 2 -H "Metadata-Flavor: Google" \
     "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" \
     | sed -n 's/.*"access_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
   if [ -z "$token" ]; then
@@ -15,7 +15,7 @@ fetch_secret() {
     return 1
   fi
 
-  response="$(curl -fsS -H "Authorization: Bearer $token" \
+  response="$(curl -fsS --connect-timeout 5 --max-time 20 --retry 5 --retry-delay 2 -H "Authorization: Bearer $token" \
     "https://secretmanager.googleapis.com/v1/$secret_version:access")" || {
     echo "Failed to access secret version: $secret_version" >&2
     return 1
@@ -53,7 +53,10 @@ systemctl restart ssh || true
 if ! command -v node >/dev/null 2>&1; then
   apt-get update -y
   apt-get install -y curl ca-certificates gnupg
-  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+  curl -fsS --connect-timeout 5 --max-time 60 --retry 5 --retry-delay 2 \
+    -o /tmp/nodesource_setup.sh https://deb.nodesource.com/setup_22.x
+  bash /tmp/nodesource_setup.sh
+  rm -f /tmp/nodesource_setup.sh
   apt-get install -y nodejs
 fi
 
@@ -165,7 +168,7 @@ cat > /home/openclaw/.openclaw/openclaw.json <<'JSON'
   "agents": {
     "defaults": {
       "model": {
-        "primary": "${openclaw_model_primary}",
+        "primary": ${jsonencode(openclaw_model_primary)},
         "fallbacks": ${openclaw_model_fallbacks_json}
       }
     }

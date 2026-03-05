@@ -33,12 +33,22 @@ variable "ssh_source_ranges" {
   type        = list(string)
   description = "Allowed CIDR ranges for SSH (TCP 22). Use your public IP/32."
   default     = ["0.0.0.0/32"]
+
+  validation {
+    condition     = alltrue([for c in var.ssh_source_ranges : can(cidrhost(trimspace(c), 0))])
+    error_message = "ssh_source_ranges must contain valid CIDR blocks."
+  }
 }
 
 variable "ui_source_ranges" {
   type        = list(string)
   description = "Allowed CIDR ranges for wg-easy UI (TCP 51821). Keep this very restricted."
   default     = ["0.0.0.0/32"]
+
+  validation {
+    condition     = alltrue([for c in var.ui_source_ranges : can(cidrhost(trimspace(c), 0))])
+    error_message = "ui_source_ranges must contain valid CIDR blocks."
+  }
 }
 
 variable "wg_default_dns" {
@@ -142,6 +152,14 @@ variable "openclaw_zone" {
   type        = string
   description = "OpenClaw zone (defaults to var.zone if null/empty)."
   default     = null
+
+  validation {
+    condition = var.openclaw_zone == null || trimspace(var.openclaw_zone) == "" || startswith(
+      trimspace(var.openclaw_zone),
+      "${trimspace(var.region)}-"
+    )
+    error_message = "openclaw_zone must belong to var.region (for example, <region>-a)."
+  }
 }
 
 variable "openclaw_gateway_port" {

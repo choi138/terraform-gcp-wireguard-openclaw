@@ -6,7 +6,12 @@ export DEBIAN_FRONTEND=noninteractive
 if ! command -v docker >/dev/null 2>&1; then
   apt-get update -y
   apt-get install -y docker.io
-  systemctl enable --now docker
+fi
+
+systemctl enable --now docker
+if ! systemctl is-active --quiet docker; then
+  echo "Docker daemon is not active." >&2
+  exit 1
 fi
 
 if ! command -v curl >/dev/null 2>&1; then
@@ -29,7 +34,7 @@ fetch_secret() {
   local secret_version="$1"
   local token response data_b64 value
 
-  token="$(curl -fsS -H "Metadata-Flavor: Google" \
+  token="$(curl -fsS --connect-timeout 5 --max-time 20 --retry 5 --retry-delay 2 -H "Metadata-Flavor: Google" \
     "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token" \
     | sed -n 's/.*"access_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
   if [ -z "$token" ]; then
@@ -37,7 +42,7 @@ fetch_secret() {
     return 1
   fi
 
-  response="$(curl -fsS -H "Authorization: Bearer $token" \
+  response="$(curl -fsS --connect-timeout 5 --max-time 20 --retry 5 --retry-delay 2 -H "Authorization: Bearer $token" \
     "https://secretmanager.googleapis.com/v1/$secret_version:access")" || {
     echo "Failed to access secret version: $secret_version" >&2
     return 1
