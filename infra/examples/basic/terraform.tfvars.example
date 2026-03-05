@@ -1,0 +1,32 @@
+project_id    = "YOUR_GCP_PROJECT_ID"
+region        = "YOUR_REGION"
+zone          = "YOUR_ZONE"
+instance_name = "wg-vpn"
+machine_type  = "e2-micro"
+
+ssh_source_ranges = ["YOUR_PUBLIC_IP/32"]
+ui_source_ranges  = ["YOUR_PUBLIC_IP/32"]
+
+wg_default_dns  = "1.1.1.1"
+wg_port         = 51820
+wgeasy_ui_port  = 51821
+
+# Optional: use a DNS name instead of the static IP
+# wg_host = "vpn.example.com"
+
+# Choose exactly one source for wg-easy credentials
+wgeasy_password_secret = "projects/YOUR_GCP_PROJECT_ID/secrets/wgeasy-password"
+# wgeasy_password_hash_secret = "projects/YOUR_GCP_PROJECT_ID/secrets/wgeasy-password-hash"
+
+# Optional: enable project-wide OS Login (single metadata item)
+# enable_project_oslogin = true
+
+# OpenClaw (VPN-only)
+openclaw_gateway_password_secret = "projects/YOUR_GCP_PROJECT_ID/secrets/openclaw-gateway-password"
+
+# Optional OpenClaw settings
+# openclaw_gateway_port = 18789
+# openclaw_version = "2026.1.30"
+# openclaw_anthropic_api_key_secret = "projects/YOUR_GCP_PROJECT_ID/secrets/openclaw-anthropic-api-key"
+# openclaw_telegram_bot_token_secret = "projects/YOUR_GCP_PROJECT_ID/secrets/openclaw-telegram-token"
+# openclaw_enable_public_ip = false

@@ -16,25 +16,28 @@ jobs:
         with:
           terraform_version: 1.5.0
 
-      - name: Terraform fmt (root)
+      - name: Terraform fmt (infra)
+        working-directory: infra
         run: terraform fmt -check
 
-      - name: Terraform init (root)
+      - name: Terraform init (infra)
+        working-directory: infra
         run: terraform init -backend=false
 
-      - name: Terraform validate (root)
+      - name: Terraform validate (infra)
+        working-directory: infra
         run: terraform validate
 
       - name: Terraform fmt (examples/basic)
-        working-directory: examples/basic
+        working-directory: infra/examples/basic
         run: terraform fmt -check
 
       - name: Terraform init (examples/basic)
-        working-directory: examples/basic
+        working-directory: infra/examples/basic
         run: terraform init -backend=false
 
       - name: Terraform validate (examples/basic)
-        working-directory: examples/basic
+        working-directory: infra/examples/basic
         run: terraform validate
 
   lint:
@@ -46,7 +49,9 @@ jobs:
         uses: terraform-linters/setup-tflint@v6
 
       - name: TFLint init
+        working-directory: infra
         run: tflint --init
 
-      - name: TFLint (root)
+      - name: TFLint (infra)
+        working-directory: infra
         run: tflint

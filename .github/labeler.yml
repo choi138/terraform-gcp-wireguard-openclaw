@@ -9,7 +9,7 @@ enhancement:
   - changed-files:
       - any-glob-to-any-file:
           - "**/*.tf"
-          - "templates/**"
-          - "examples/**"
+          - "infra/templates/**"
+          - "infra/examples/**"
           - "tests/**"
           - ".github/workflows/**"
