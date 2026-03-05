@@ -152,8 +152,10 @@ variable "openclaw_zone" {
   type        = string
   description = "OpenClaw zone (defaults to var.zone if null/empty)."
   default     = null
+}
 
-  validation {
+check "openclaw_zone_region_match" {
+  assert {
     condition = var.openclaw_zone == null || trimspace(var.openclaw_zone) == "" || startswith(
       trimspace(var.openclaw_zone),
       "${trimspace(var.region)}-"
