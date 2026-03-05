@@ -13,20 +13,20 @@ Terraform module that provisions a GCP WireGuard (wg-easy) VPN plus an OpenClaw 
 - OS Login enablement (optional, project-level)
 
 ## Layout
-- `main.tf` - resources, networking, IAM, instances, startup scripts
-- `variables.tf` - inputs and validation
-- `outputs.tf` - outputs
-- `versions.tf` - Terraform/Provider versions
-- `templates/startup.sh.tpl` - install/run Docker + wg-easy at boot
-- `templates/startup-openclaw.sh.tpl` - install/run OpenClaw at boot
-- `examples/basic/` - module usage example
+- `infra/main.tf` - resources, networking, IAM, instances, startup scripts
+- `infra/variables.tf` - inputs and validation
+- `infra/outputs.tf` - outputs
+- `infra/versions.tf` - Terraform/Provider versions
+- `infra/templates/startup.sh.tpl` - install/run Docker + wg-easy at boot
+- `infra/templates/startup-openclaw.sh.tpl` - install/run OpenClaw at boot
+- `infra/examples/basic/` - module usage example
 - `docs/` - design/security/operations docs
 - `tests/` - testing/validation guide
 
 ## Usage
 1) Move to the example directory:
 ```
-cd examples/basic
+cd infra/examples/basic
 ```
 
 2) Copy the example tfvars and edit for your environment:

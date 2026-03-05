@@ -1,7 +1,8 @@
 # Tests
 
 Suggested checks for this module:
-- terraform fmt -check -recursive
+- cd infra
+- terraform fmt -check
 - terraform init -backend=false
 - terraform validate
 - tflint --init && tflint
@@ -13,7 +14,7 @@ Suggested checks for this module:
 - optional `openclaw_anthropic_api_key_secret`
 - optional `openclaw_telegram_bot_token_secret`
 
-2) Use only `*_secret` variables in `examples/basic/terraform.tfvars`.
+2) Use only `*_secret` variables in `infra/examples/basic/terraform.tfvars`.
 
 3) Run:
 - terraform plan
