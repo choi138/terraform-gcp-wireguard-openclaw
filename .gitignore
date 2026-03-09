@@ -17,3 +17,6 @@ crash.*.log
 
 # Node
 node_modules/
+
+# App env files
+apps/backend/.env
