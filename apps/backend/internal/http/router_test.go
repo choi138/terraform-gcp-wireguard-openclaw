@@ -60,11 +60,12 @@ func TestProtectedRouteWritesAuditLog(t *testing.T) {
 	if len(events) == 0 {
 		t.Fatalf("expected at least one audit event")
 	}
-	if events[0].Actor != "admin" {
-		t.Fatalf("expected actor admin, got %q", events[0].Actor)
+	last := events[len(events)-1]
+	if last.Actor != "admin" {
+		t.Fatalf("expected actor admin, got %q", last.Actor)
 	}
-	if events[0].ResourceID != "" {
-		t.Fatalf("expected empty resource id for static route, got %q", events[0].ResourceID)
+	if last.ResourceID != "" {
+		t.Fatalf("expected empty resource id for static route, got %q", last.ResourceID)
 	}
 }
 

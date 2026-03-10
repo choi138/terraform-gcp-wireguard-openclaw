@@ -37,3 +37,15 @@ func TestLoadFromEnvAllowsMemoryFallback(t *testing.T) {
 		t.Fatal("expected AllowMemoryFallback to be true")
 	}
 }
+
+func TestLoadFromEnvRejectsInvalidTimeoutEnv(t *testing.T) {
+	t.Setenv("OPS_API_ADMIN_TOKEN", "test-token")
+	t.Setenv("OPS_API_ALLOW_MEMORY_FALLBACK", "true")
+	t.Setenv("OPS_API_DB_DSN", "")
+	t.Setenv("OPS_API_READ_TIMEOUT_SEC", "abc")
+
+	_, err := LoadFromEnv()
+	if err == nil {
+		t.Fatal("expected invalid read timeout to fail")
+	}
+}

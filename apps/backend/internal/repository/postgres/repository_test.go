@@ -1,6 +1,12 @@
 package postgres
 
-import "testing"
+import (
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/choegeun-won/terraform-gcp-wireguard-openclaw/apps/backend/internal/repository"
+)
 
 func TestBucketExpressionUsesUTC(t *testing.T) {
 	tests := []struct {
@@ -47,4 +53,26 @@ func TestBucketExpressionRejectsUnknownBucket(t *testing.T) {
 	if expr, ok := bucketExpression("unknown"); ok || expr != "" {
 		t.Fatalf("bucketExpression returned (%q, %t), want (\"\", false)", expr, ok)
 	}
+}
+
+func TestGetTimeseriesRejectsUnsupportedMetric(t *testing.T) {
+	store := &Store{}
+
+	_, err := store.GetTimeseries(t.Context(), "invalid", "1h", tZero(), tZero())
+	if !errors.Is(err, repository.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	}
+}
+
+func TestGetTimeseriesRejectsUnsupportedBucket(t *testing.T) {
+	store := &Store{}
+
+	_, err := store.GetTimeseries(t.Context(), "requests", "invalid", tZero(), tZero())
+	if !errors.Is(err, repository.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	}
+}
+
+func tZero() time.Time {
+	return time.Time{}
 }

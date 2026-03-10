@@ -55,13 +55,20 @@ WHERE created_at BETWEEN $1 AND $2
 }
 
 func (s *Store) GetTimeseries(ctx context.Context, metric, bucket string, from, to time.Time) ([]domain.DashboardPoint, error) {
+	if !domain.IsAllowedDashboardMetric(metric) {
+		return nil, fmt.Errorf("%w: unsupported metric %q", repository.ErrInvalidInput, metric)
+	}
+	if !domain.IsAllowedDashboardBucket(bucket) {
+		return nil, fmt.Errorf("%w: unsupported bucket %q", repository.ErrInvalidInput, bucket)
+	}
+
 	metricExpr, ok := metricExpression(metric)
 	if !ok {
-		return []domain.DashboardPoint{}, nil
+		return nil, fmt.Errorf("%w: unsupported metric %q", repository.ErrInvalidInput, metric)
 	}
 	bucketExpr, ok := bucketExpression(bucket)
 	if !ok {
-		return []domain.DashboardPoint{}, nil
+		return nil, fmt.Errorf("%w: unsupported bucket %q", repository.ErrInvalidInput, bucket)
 	}
 
 	query := fmt.Sprintf(`
@@ -125,7 +132,7 @@ func (s *Store) ListConversations(ctx context.Context, filter domain.Conversatio
 SELECT id, account_id, channel, status, started_at, ended_at
 FROM conversations
 %s
-ORDER BY started_at DESC
+ORDER BY started_at DESC, id DESC
 LIMIT $%d OFFSET $%d
 `, whereClause, idx, idx+1)
 	args = append(args, pagination.PageSize, offset)
@@ -187,7 +194,7 @@ func (s *Store) ListMessages(ctx context.Context, conversationID int64, paginati
 SELECT id, conversation_id, role, content_masked, created_at
 FROM messages
 WHERE conversation_id = $1
-ORDER BY created_at ASC
+ORDER BY created_at ASC, id ASC
 LIMIT $2 OFFSET $3
 `
 	rows, err := s.db.QueryContext(ctx, q, conversationID, pagination.PageSize, offset)
@@ -224,7 +231,7 @@ func (s *Store) ListAttempts(ctx context.Context, conversationID int64, paginati
 SELECT id, conversation_id, provider, model, tokens_in, tokens_out, cost_usd, latency_ms, success, error_code, created_at
 FROM request_attempts
 WHERE conversation_id = $1
-ORDER BY created_at ASC
+ORDER BY created_at ASC, id ASC
 LIMIT $2 OFFSET $3
 `
 	rows, err := s.db.QueryContext(ctx, q, conversationID, pagination.PageSize, offset)
@@ -264,7 +271,7 @@ func (s *Store) GetLatestStatus(ctx context.Context) (domain.InfraSnapshot, erro
 	const q = `
 SELECT id, vpn_peer_count, openclaw_up, cpu_pct, mem_pct, captured_at
 FROM infra_snapshots
-ORDER BY captured_at DESC
+ORDER BY captured_at DESC, id DESC
 LIMIT 1
 `
 	var out domain.InfraSnapshot
@@ -297,7 +304,7 @@ func (s *Store) ListSnapshots(ctx context.Context, from, to time.Time, paginatio
 SELECT id, vpn_peer_count, openclaw_up, cpu_pct, mem_pct, captured_at
 FROM infra_snapshots
 WHERE captured_at BETWEEN $1 AND $2
-ORDER BY captured_at DESC
+ORDER BY captured_at DESC, id DESC
 LIMIT $3 OFFSET $4
 `
 

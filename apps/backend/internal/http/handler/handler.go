@@ -117,11 +117,11 @@ func (a *API) DashboardTimeseries(w http.ResponseWriter, r *http.Request) {
 		bucket = "1h"
 	}
 
-	if !isAllowedMetric(metric) {
+	if !domain.IsAllowedDashboardMetric(metric) {
 		writeError(w, http.StatusBadRequest, "metric must be one of: requests,tokens,cost,errors")
 		return
 	}
-	if !isAllowedBucket(bucket) {
+	if !domain.IsAllowedDashboardBucket(bucket) {
 		writeError(w, http.StatusBadRequest, "bucket must be one of: 1m,5m,1h,day")
 		return
 	}
@@ -134,6 +134,10 @@ func (a *API) DashboardTimeseries(w http.ResponseWriter, r *http.Request) {
 
 	points, err := a.dashboard.GetTimeseries(r.Context(), metric, bucket, from, to)
 	if err != nil {
+		if errors.Is(err, repository.ErrInvalidInput) {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "failed to load dashboard timeseries")
 		return
 	}
@@ -337,25 +341,14 @@ func parsePathInt64(v string) (int64, error) {
 	if v == "" {
 		return 0, errors.New("empty id")
 	}
-	return strconv.ParseInt(v, 10, 64)
-}
-
-func isAllowedMetric(metric string) bool {
-	switch metric {
-	case "requests", "tokens", "cost", "errors":
-		return true
-	default:
-		return false
+	id, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		return 0, err
 	}
-}
-
-func isAllowedBucket(bucket string) bool {
-	switch bucket {
-	case "1m", "5m", "1h", "day":
-		return true
-	default:
-		return false
+	if id < 1 {
+		return 0, errors.New("id must be greater than or equal to 1")
 	}
+	return id, nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

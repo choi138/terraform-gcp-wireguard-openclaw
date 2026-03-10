@@ -95,3 +95,23 @@ func TestWithBearerAuthIgnoresActorHeader(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusNoContent, rr.Code)
 	}
 }
+
+func TestWithBearerAuthRejectsWhenTokenEmpty(t *testing.T) {
+	h := middleware.WithBearerAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if actor := middleware.ActorFromContext(r.Context()); actor != "" {
+			t.Fatalf("expected empty actor, got %q", actor)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}), "")
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/dashboard/summary", nil)
+	req.Header.Set("Authorization", "Bearer expected-token")
+	req.Header.Set("X-Actor-ID", "spoofed")
+	rr := httptest.NewRecorder()
+
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, rr.Code)
+	}
+}

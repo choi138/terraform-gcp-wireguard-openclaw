@@ -29,3 +29,16 @@ func TestParseTimeRangeExpandsDateOnlyUpperBound(t *testing.T) {
 		t.Fatalf("unexpected to value %s", got)
 	}
 }
+
+func TestParsePathInt64RejectsNonPositiveValues(t *testing.T) {
+	tests := []string{"0", "-1"}
+
+	for _, input := range tests {
+		t.Run(input, func(t *testing.T) {
+			_, err := parsePathInt64(input)
+			if err == nil {
+				t.Fatalf("expected error for %q", input)
+			}
+		})
+	}
+}

@@ -24,6 +24,14 @@ func LoadFromEnv() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	readTimeoutSec, err := getEnvInt("OPS_API_READ_TIMEOUT_SEC", 10)
+	if err != nil {
+		return Config{}, err
+	}
+	writeTimeoutSec, err := getEnvInt("OPS_API_WRITE_TIMEOUT_SEC", 10)
+	if err != nil {
+		return Config{}, err
+	}
 
 	cfg := Config{
 		Addr:                getEnv("OPS_API_ADDR", ":8080"),
@@ -31,8 +39,8 @@ func LoadFromEnv() (Config, error) {
 		AllowMemoryFallback: allowMemoryFallback,
 		DatabaseDSN:         os.Getenv("OPS_API_DB_DSN"),
 		DatabaseDriver:      getEnv("OPS_API_DB_DRIVER", "postgres"),
-		ReadTimeout:         time.Duration(getEnvInt("OPS_API_READ_TIMEOUT_SEC", 10)) * time.Second,
-		WriteTimeout:        time.Duration(getEnvInt("OPS_API_WRITE_TIMEOUT_SEC", 10)) * time.Second,
+		ReadTimeout:         time.Duration(readTimeoutSec) * time.Second,
+		WriteTimeout:        time.Duration(writeTimeoutSec) * time.Second,
 	}
 
 	if cfg.AdminToken == "" {
@@ -55,16 +63,16 @@ func getEnv(key, fallback string) string {
 	return fallback
 }
 
-func getEnvInt(key string, fallback int) int {
+func getEnvInt(key string, fallback int) (int, error) {
 	v, ok := os.LookupEnv(key)
 	if !ok || v == "" {
-		return fallback
+		return fallback, nil
 	}
 	parsed, err := strconv.Atoi(v)
 	if err != nil {
-		return fallback
+		return 0, fmt.Errorf("%s must be an integer", key)
 	}
-	return parsed
+	return parsed, nil
 }
 
 func getEnvBool(key string, fallback bool) (bool, error) {
