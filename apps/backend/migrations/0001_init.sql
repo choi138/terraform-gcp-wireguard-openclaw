@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 
 CREATE TABLE IF NOT EXISTS conversations (
   id BIGSERIAL PRIMARY KEY,
-  account_id BIGINT NOT NULL REFERENCES accounts(id),
+  account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE NO ACTION,
   channel TEXT NOT NULL,
   status TEXT NOT NULL,
   started_at TIMESTAMPTZ NOT NULL,
