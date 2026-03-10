@@ -1,186 +1,210 @@
 # terraform-gcp-wireguard-openclaw
 
-Terraform module that provisions a GCP WireGuard (wg-easy) VPN plus an OpenClaw VM. It uses Ubuntu LTS, runs wg-easy via Docker, and includes a static external IP with least-privilege firewall rules.
+Repository for running a private GCP WireGuard + OpenClaw stack and the internal
+Ops API that supports it.
 
-## Resources created
-- 1 WireGuard VM (Ubuntu LTS)
-- 1 OpenClaw VM (Ubuntu LTS, **internal IP only**)
-- 2 dedicated service accounts (VPN/OpenClaw)
-- Secret Manager IAM bindings scoped to referenced secrets only
-- 1 Static External IP (for WireGuard)
-- 5 firewall rules (WireGuard UDP, wg-easy UI, WireGuard SSH, OpenClaw Gateway, OpenClaw SSH)
-- Cloud Router + Cloud NAT (for OpenClaw outbound API access)
-- OS Login enablement (optional, project-level)
+This repo now contains two main parts:
+- `infra/`: Terraform for the VPN and OpenClaw infrastructure
+- `apps/backend/`: Go backend for internal Ops Console APIs
 
-## Layout
-- `infra/main.tf` - resources, networking, IAM, instances, startup scripts
-- `infra/variables.tf` - inputs and validation
-- `infra/outputs.tf` - outputs
-- `infra/versions.tf` - Terraform/Provider versions
-- `infra/templates/startup.sh.tpl` - install/run Docker + wg-easy at boot
-- `infra/templates/startup-openclaw.sh.tpl` - install/run OpenClaw at boot
-- `infra/examples/basic/` - module usage example
-- `docs/` - design/security/operations docs
-- `tests/` - testing/validation guide
+The deployed OpenClaw VM is intended to stay private behind the WireGuard VPN.
+The Ops API is also designed for internal-only access.
 
-## Usage
-1) Move to the example directory:
-```
+## Components
+- `infra/`: GCP networking, IAM, VM instances, startup scripts, example module usage
+- `apps/backend/`: Go API server, migrations, repository adapters, OpenAPI spec
+- `openspec/`: change history and synced specs for the Ops API work
+- `docs/`: architecture, security, and operational notes
+- `tests/`: infrastructure validation guide
+
+## Quick Start
+
+### Infrastructure
+1. Move to the example directory:
+```bash
 cd infra/examples/basic
 ```
 
-2) Copy the example tfvars and edit for your environment:
-```
+2. Copy the example tfvars and edit for your environment:
+```bash
 cp terraform.tfvars.example terraform.tfvars
 ```
 
-3) Initialize and apply:
-```
+3. Initialize and apply:
+```bash
 terraform init
 terraform plan
 terraform apply
 ```
 
-4) Check the UI URL:
-```
+4. Check outputs:
+```bash
 terraform output wgeasy_ui_url
+terraform output openclaw_gateway_url
 ```
 
-## Development
-1) Install pre-commit:
+### Backend
+1. Create a local env file:
+```bash
+cd apps/backend
+cp .env.example .env
 ```
+
+2. Load env values:
+```bash
+set -a
+source .env
+set +a
+```
+
+3. Run migrations and start the API:
+```bash
+make migrate
+make run-api
+```
+
+4. Run tests:
+```bash
+make test
+```
+
+Use `OPS_API_ALLOW_MEMORY_FALLBACK=true` only for local smoke tests. Normal
+environments should set `OPS_API_DB_DSN` and keep memory fallback disabled.
+
+## Repository Layout
+- `infra/main.tf`: resources, networking, IAM, instances, startup scripts
+- `infra/variables.tf`: Terraform inputs and validation
+- `infra/outputs.tf`: public/internal connection information
+- `infra/templates/startup.sh.tpl`: wg-easy bootstrap script
+- `infra/templates/startup-openclaw.sh.tpl`: OpenClaw bootstrap script
+- `infra/examples/basic/`: example module usage
+- `apps/backend/cmd/api`: HTTP server entrypoint
+- `apps/backend/cmd/migrate`: SQL migration runner
+- `apps/backend/internal/http`: routes, handlers, middleware
+- `apps/backend/internal/repository`: memory and Postgres repository implementations
+- `apps/backend/api/openapi.yaml`: Ops API contract
+- `apps/backend/README.md`: backend-specific runtime and command details
+- `openspec/specs/ops-api-core/spec.md`: synced main spec for the current backend scope
+
+## Development And CI
+- Install repo hooks:
+```bash
 python3 -m pip install pre-commit
-```
-
-2) Enable hooks:
-```
 pre-commit install
 pre-commit install --hook-type commit-msg
 ```
 
-3) Run all checks:
-```
+- Run repository checks:
+```bash
 pre-commit run --all-files
 ```
 
-## Terraform Docs
-<!-- BEGIN_TF_DOCS -->
-<!-- END_TF_DOCS -->
+- Backend CI lives in `.github/workflows/backend-ci.yml`.
+  It runs `go test ./...` only when `apps/backend/**` or the workflow file changes.
 
-## Required variables
+## Infrastructure Summary
+
+### Resources created
+- 1 WireGuard VM (Ubuntu LTS)
+- 1 OpenClaw VM (Ubuntu LTS, internal IP only by default)
+- 2 dedicated service accounts (VPN/OpenClaw)
+- Secret Manager IAM bindings scoped to referenced secrets only
+- 1 static external IP for WireGuard
+- firewall rules for WireGuard, wg-easy UI, SSH, and the private OpenClaw gateway
+- Cloud Router + Cloud NAT for OpenClaw outbound access
+- optional project-level OS Login enablement
+
+### Important outputs
+- `vpn_public_ip`
+- `wgeasy_ui_url`
+- `wireguard_port`
+- `vpn_internal_ip`
+- `openclaw_internal_ip`
+- `openclaw_gateway_url`
+
+## Backend Summary
+- Runtime: Go `1.26.0`
+- Protected routes require `OPS_API_ADMIN_TOKEN`
+- Database-backed mode uses `OPS_API_DB_DSN`
+- Read APIs include dashboard, conversations, messages, attempts, and infra snapshots
+- Authenticated reads are audited
+- OpenAPI contract lives in `apps/backend/api/openapi.yaml`
+
+See `apps/backend/README.md` for backend-only commands and environment details.
+
+## Required Terraform Variables
 - `project_id`, `region`, `zone`
 - `instance_name`, `machine_type`
-- `vpn_internal_ip_address` (optional; pin WireGuard VM internal IP)
-- `ssh_source_ranges` (CIDR list)
-- `ui_source_ranges` (CIDR list; keep very restricted)
+- `vpn_internal_ip_address` (optional)
+- `ssh_source_ranges`
+- `ui_source_ranges`
 - `wg_default_dns`
-- `wg_port` (default: 51820)
-- `wgeasy_ui_port` (default: 51821)
-- `wg_host` (optional; defaults to static IP)
-- **wg-easy credential source (exactly one)**:
+- `wg_port`
+- `wgeasy_ui_port`
+- exactly one of:
   - `wgeasy_password_secret`
   - `wgeasy_password_hash_secret`
-- `enable_project_oslogin` (optional; default false)
 - `openclaw_instance_name`, `openclaw_machine_type`
-- `openclaw_internal_ip_address` (optional; pin OpenClaw VM internal IP)
-- `openclaw_gateway_port` (default: 18789)
-- `openclaw_gateway_password_secret` (required)
-- `openclaw_version` (default: `2026.1.30`, recommended to pin a patched version)
-- `openclaw_anthropic_api_key_secret` (optional)
-- `openclaw_model_primary` (default: `anthropic/claude-opus-4-6`)
-- `openclaw_model_fallbacks` (default: `["anthropic/claude-opus-4-5"]`)
-- `openclaw_telegram_bot_token_secret` (optional)
-- `openclaw_enable_public_ip` (optional; default false, not recommended)
+- `openclaw_internal_ip_address` (optional)
+- `openclaw_gateway_port`
+- `openclaw_gateway_password_secret`
+- `openclaw_version`
+- optional model and integration secrets such as:
+  - `openclaw_anthropic_api_key_secret`
+  - `openclaw_telegram_bot_token_secret`
 
-## Secret Manager setup (required)
-The module supports Secret Manager references in this format:
-- `projects/<project>/secrets/<name>` (auto-uses `versions/latest`)
+## Secret Manager Setup
+Secret references support:
+- `projects/<project>/secrets/<name>`
 - `projects/<project>/secrets/<name>/versions/<version>`
 
-1) Enable Secret Manager API in your project:
-```
+Example:
+```bash
 gcloud services enable secretmanager.googleapis.com --project <PROJECT_ID>
-```
 
-2) Create secrets and versions (example):
-```
 printf '%s' 'YOUR_VALUE' | gcloud secrets create openclaw-gateway-password \
   --project <PROJECT_ID> \
   --replication-policy=automatic \
   --data-file=-
 ```
 
-3) Set secret reference variables in tfvars.
+The module grants `roles/secretmanager.secretAccessor` only to secrets that are
+explicitly referenced by variables.
 
-4) Run `terraform apply`.
-- The module creates dedicated VM service accounts.
-- It grants `roles/secretmanager.secretAccessor` only to referenced secrets.
-- Startup scripts fetch secret payloads at boot via instance identity.
+## Security Notes
+- Do not expose the wg-easy UI publicly. Restrict `ui_source_ranges`.
+- Restrict SSH with `ssh_source_ranges` and prefer OS Login.
+- Keep OpenClaw private unless there is a deliberate exception.
+- Store secret payloads in Secret Manager, not in tfvars or state-adjacent files.
+- Treat `OPS_API_ADMIN_TOKEN` as required operational secret material.
 
-## Outputs
-- `vpn_public_ip`
-- `wgeasy_ui_url` (http://<ip>:51821)
-- `wireguard_port`
-- `vpn_internal_ip`
-- `openclaw_internal_ip`
-- `openclaw_gateway_url` (VPN-only access)
-
-## Security notes (important)
-- Do not expose the wg-easy UI to the public internet. Restrict `ui_source_ranges` to your public IP/32.
-- Restrict SSH with `ssh_source_ranges` and use OS Login + SSH keys.
-- Use strong admin passwords and rotate immediately if exposed.
-- This module is secret-reference-only for sensitive values. Keep raw secret payloads in Secret Manager, not in tfvars/state.
-
-## wg-easy configuration
-- Supported credential sources are mutually exclusive:
-  - `wgeasy_password_secret`: startup generates bcrypt hash via `wgpw`
-  - `wgeasy_password_hash_secret`: startup uses hash directly as `PASSWORD_HASH`
-- The following are always set: `WG_HOST`, `WG_PORT`, `WG_DEFAULT_DNS`, `PORT`.
-- The UI is exposed over HTTP with `INSECURE=true`, so restrict access.
-- The container image is pinned to `ghcr.io/wg-easy/wg-easy:14` to keep env-based configuration stable. Hash example:
-  `docker run --rm ghcr.io/wg-easy/wg-easy:14 wgpw 'YOUR_PASSWORD'`
-
-## OpenClaw usage
-- The OpenClaw VM has **no external IP** and is reachable only after VPN connection.
-- Connect via `openclaw_gateway_url` after WireGuard is up.
-- OpenClaw gateway/API/Telegram credentials are read from Secret Manager references.
-- Default model is **claude opus 4.6**, with **4.5** as fallback.
-- Telegram integration:
-  1) Create a bot token via BotFather
-  2) Set `openclaw_telegram_bot_token_secret`
-  3) Run `terraform apply`
-  4) First DM requires approval under the pairing policy
-- OpenClaw and WireGuard VMs share the same VPC/subnet.
-
-## Migration from plaintext to Secret Manager
-1) Create secrets in Secret Manager for values currently held in tfvars/environment.
-2) Replace plaintext variables with corresponding `*_secret` variables.
-3) Run `terraform apply`.
-4) Remove plaintext secret values from local tfvars/history once validated.
-
-## Verification checklist
-- Confirm the public IP after `terraform apply`
-- Access `http://<vpn_public_ip>:51821` and log in
-- Connect via WireGuard client (QR or config)
-- Confirm traffic is routed through the VPN
-- Access `openclaw_gateway_url` while connected to VPN
-- Confirm startup scripts can read configured Secret Manager references
+## Verification Checklist
+- Confirm the public VPN IP after `terraform apply`
+- Log in to `wgeasy_ui_url`
+- Connect through WireGuard
+- Verify `openclaw_gateway_url` is reachable only from inside the VPN
+- Verify startup scripts can read configured Secret Manager references
+- For the backend, verify:
+  - `GET /v1/healthz` returns `200`
+  - protected routes return `401` without a token
+  - protected routes return `200` with a valid token
 
 ## Troubleshooting
-- Firewall/tags: the VM must have the `wg-vpn` tag. Check UDP 51820 and TCP 51821.
-- Secret Manager access issues:
-  - Verify secret reference format (`projects/.../secrets/...[/versions/...]`)
-  - Verify Secret Manager API is enabled
-  - Verify generated VM service account has `roles/secretmanager.secretAccessor` on referenced secrets
-- Docker status:
+- Firewall/tags: verify the VM has the `wg-vpn` tag
+- Secret Manager access:
+  - verify secret reference format
+  - verify Secret Manager API is enabled
+  - verify the generated VM service account has accessor permissions
+- WireGuard status:
   - `sudo docker ps`
   - `sudo docker logs wg-easy`
-- Startup script logs:
-  - `sudo journalctl -u google-startup-scripts.service`
-  - `sudo tail -n 200 /var/log/syslog`
-- OpenClaw logs:
+- OpenClaw status:
   - `sudo systemctl status openclaw`
   - `sudo journalctl -u openclaw -n 200`
+- Startup scripts:
+  - `sudo journalctl -u google-startup-scripts.service`
+  - `sudo tail -n 200 /var/log/syslog`
 
-## Switching to a custom VPC
-This module currently uses the default network/subnetwork via `data.google_compute_network.default` and `data.google_compute_subnetwork.default`. Swap to a custom VPC/subnet if needed.
+## Terraform Docs
+<!-- BEGIN_TF_DOCS -->
+<!-- END_TF_DOCS -->
