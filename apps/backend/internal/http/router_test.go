@@ -95,6 +95,64 @@ func TestProtectedConversationRouteWritesPathIdentifierToAuditLog(t *testing.T) 
 	}
 }
 
+func TestProtectedConversationNotFoundWritesAuditLog(t *testing.T) {
+	store := memory.NewStore()
+	h := httpapi.NewRouter(config.Config{AdminToken: "test-token"}, testDependencies(store), testLogger())
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/conversations/999", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d", http.StatusNotFound, rr.Code)
+	}
+
+	events := store.AuditEvents()
+	if len(events) == 0 {
+		t.Fatalf("expected at least one audit event")
+	}
+	last := events[len(events)-1]
+	if last.ResourceType != "conversations" {
+		t.Fatalf("expected resource type conversations, got %q", last.ResourceType)
+	}
+	if last.ResourceID != "999" {
+		t.Fatalf("expected resource id 999, got %q", last.ResourceID)
+	}
+	if got := last.Metadata["status"]; got != http.StatusNotFound {
+		t.Fatalf("expected audit status %d, got %v", http.StatusNotFound, got)
+	}
+}
+
+func TestProtectedConversationBadRequestWritesAuditLog(t *testing.T) {
+	store := memory.NewStore()
+	h := httpapi.NewRouter(config.Config{AdminToken: "test-token"}, testDependencies(store), testLogger())
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/conversations/0", nil)
+	req.Header.Set("Authorization", "Bearer test-token")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, rr.Code)
+	}
+
+	events := store.AuditEvents()
+	if len(events) == 0 {
+		t.Fatalf("expected at least one audit event")
+	}
+	last := events[len(events)-1]
+	if last.ResourceType != "conversations" {
+		t.Fatalf("expected resource type conversations, got %q", last.ResourceType)
+	}
+	if last.ResourceID != "0" {
+		t.Fatalf("expected resource id 0, got %q", last.ResourceID)
+	}
+	if got := last.Metadata["status"]; got != http.StatusBadRequest {
+		t.Fatalf("expected audit status %d, got %v", http.StatusBadRequest, got)
+	}
+}
+
 func testDependencies(store *memory.Store) httpapi.Dependencies {
 	return httpapi.Dependencies{
 		Readiness:    store,

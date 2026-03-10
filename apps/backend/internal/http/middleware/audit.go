@@ -37,7 +37,7 @@ func WithReadAudit(next http.Handler, auditWriter ReadAuditWriter, logger *slog.
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
 
-		if r.Method != http.MethodGet || rec.status >= http.StatusBadRequest {
+		if r.Method != http.MethodGet {
 			return
 		}
 
