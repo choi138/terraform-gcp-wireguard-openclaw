@@ -1,0 +1,195 @@
+openapi: 3.1.0
+info:
+  title: OpenClaw Ops API
+  version: 0.1.0
+  description: Internal-only API for dashboard, conversation timeline, infra status, and audit-aware reads.
+servers:
+  - url: https://ops-api.internal
+security:
+  - BearerAuth: []
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+paths:
+  /v1/healthz:
+    get:
+      summary: Liveness probe
+      security: []
+      responses:
+        "200":
+          description: API process is alive
+  /v1/readyz:
+    get:
+      summary: Readiness probe
+      security: []
+      responses:
+        "200":
+          description: Dependencies are ready
+        "503":
+          description: Dependency is unavailable
+  /v1/dashboard/summary:
+    get:
+      summary: Dashboard summary
+      parameters:
+        - in: query
+          name: from
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: to
+          required: true
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Summary metrics
+  /v1/dashboard/timeseries:
+    get:
+      summary: Dashboard timeseries
+      parameters:
+        - in: query
+          name: metric
+          schema:
+            type: string
+            enum: [requests, tokens, cost, errors]
+        - in: query
+          name: bucket
+          schema:
+            type: string
+            enum: [1m, 5m, 1h, day]
+        - in: query
+          name: from
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: to
+          required: true
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Timeseries points
+  /v1/conversations:
+    get:
+      summary: Conversation timeline
+      parameters:
+        - in: query
+          name: channel
+          schema:
+            type: string
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Conversation list
+  /v1/conversations/{id}:
+    get:
+      summary: Conversation detail
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Conversation detail
+        "404":
+          description: Not found
+  /v1/conversations/{id}/messages:
+    get:
+      summary: Conversation messages
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: page
+          description: Page number. Defaults to 1.
+          schema:
+            type: integer
+            minimum: 1
+        - in: query
+          name: page_size
+          description: Page size. Defaults to 50 and is capped at 200.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Message list
+  /v1/conversations/{id}/attempts:
+    get:
+      summary: Conversation attempts
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+        - in: query
+          name: page
+          description: Page number. Defaults to 1.
+          schema:
+            type: integer
+            minimum: 1
+        - in: query
+          name: page_size
+          description: Page size. Defaults to 50 and is capped at 200.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: Attempt list
+  /v1/infra/status:
+    get:
+      summary: Latest infra status
+      responses:
+        "200":
+          description: Latest snapshot
+  /v1/infra/snapshots:
+    get:
+      summary: Infra snapshot history
+      parameters:
+        - in: query
+          name: from
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: to
+          required: true
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Snapshot list
