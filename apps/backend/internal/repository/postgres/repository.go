@@ -372,15 +372,17 @@ func metricExpression(metric string) (string, bool) {
 }
 
 func bucketExpression(bucket string) (string, bool) {
+	const utcTimestamp = "(created_at AT TIME ZONE 'UTC')"
+
 	switch bucket {
 	case "1m":
-		return "date_trunc('minute', created_at)", true
+		return "date_trunc('minute', " + utcTimestamp + ") AT TIME ZONE 'UTC'", true
 	case "5m":
-		return "date_trunc('hour', created_at) + (floor(date_part('minute', created_at) / 5) * interval '5 minutes')", true
+		return "((date_trunc('hour', " + utcTimestamp + ") + (floor(date_part('minute', " + utcTimestamp + ") / 5) * interval '5 minutes')) AT TIME ZONE 'UTC')", true
 	case "1h":
-		return "date_trunc('hour', created_at)", true
+		return "date_trunc('hour', " + utcTimestamp + ") AT TIME ZONE 'UTC'", true
 	case "day":
-		return "date_trunc('day', created_at)", true
+		return "date_trunc('day', " + utcTimestamp + ") AT TIME ZONE 'UTC'", true
 	default:
 		return "", false
 	}
