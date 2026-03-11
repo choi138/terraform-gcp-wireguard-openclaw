@@ -141,23 +141,27 @@ OPENCLAW_TELEGRAM_BOT_TOKEN_VALUE="$(fetch_secret "${openclaw_telegram_bot_token
 }
 %{ endif }
 
-# Environment file to avoid shell expansion of secrets.
-cat > /opt/openclaw/openclaw.env <<'ENVEOF'
+# Shared environment file for the systemd service and CLI wrapper.
+SHARED_OPENCLAW_ENV="/home/openclaw/.openclaw/.env"
+cat > "$SHARED_OPENCLAW_ENV" <<'ENVEOF'
 ENVEOF
-printf 'OPENCLAW_GATEWAY_PASSWORD=%s\n' "$OPENCLAW_GATEWAY_PASSWORD_VALUE" >> /opt/openclaw/openclaw.env
+printf 'OPENCLAW_GATEWAY_PASSWORD=%s\n' "$OPENCLAW_GATEWAY_PASSWORD_VALUE" >> "$SHARED_OPENCLAW_ENV"
 
 if [ -n "$OPENCLAW_ANTHROPIC_API_KEY_VALUE" ]; then
-  printf 'ANTHROPIC_API_KEY=%s\n' "$OPENCLAW_ANTHROPIC_API_KEY_VALUE" >> /opt/openclaw/openclaw.env
+  printf 'ANTHROPIC_API_KEY=%s\n' "$OPENCLAW_ANTHROPIC_API_KEY_VALUE" >> "$SHARED_OPENCLAW_ENV"
 fi
 
 if [ -n "$OPENCLAW_OPENAI_API_KEY_VALUE" ]; then
-  printf 'OPENAI_API_KEY=%s\n' "$OPENCLAW_OPENAI_API_KEY_VALUE" >> /opt/openclaw/openclaw.env
+  printf 'OPENAI_API_KEY=%s\n' "$OPENCLAW_OPENAI_API_KEY_VALUE" >> "$SHARED_OPENCLAW_ENV"
 fi
 
 if [ -n "$OPENCLAW_TELEGRAM_BOT_TOKEN_VALUE" ]; then
-  printf 'TELEGRAM_BOT_TOKEN=%s\n' "$OPENCLAW_TELEGRAM_BOT_TOKEN_VALUE" >> /opt/openclaw/openclaw.env
+  printf 'TELEGRAM_BOT_TOKEN=%s\n' "$OPENCLAW_TELEGRAM_BOT_TOKEN_VALUE" >> "$SHARED_OPENCLAW_ENV"
 fi
 
+chown openclaw:openclaw "$SHARED_OPENCLAW_ENV"
+chmod 600 "$SHARED_OPENCLAW_ENV"
+cp "$SHARED_OPENCLAW_ENV" /opt/openclaw/openclaw.env
 chmod 600 /opt/openclaw/openclaw.env
 
 # Write OpenClaw config.
@@ -199,10 +203,17 @@ chmod 600 /home/openclaw/.openclaw/openclaw.json
 cat > /usr/local/bin/oc <<'OCEOF'
 #!/bin/bash
 set -euo pipefail
-exec sudo -u openclaw env \
-  OPENCLAW_CONFIG_PATH=/home/openclaw/.openclaw/openclaw.json \
-  OPENCLAW_STATE_DIR=/home/openclaw/.openclaw/state \
-  openclaw "$@"
+exec sudo -u openclaw /bin/bash -lc '
+set -euo pipefail
+set -a
+if [ -f /home/openclaw/.openclaw/.env ]; then
+  . /home/openclaw/.openclaw/.env
+fi
+set +a
+export OPENCLAW_CONFIG_PATH=/home/openclaw/.openclaw/openclaw.json
+export OPENCLAW_STATE_DIR=/home/openclaw/.openclaw/state
+exec openclaw "$@"
+' bash "$@"
 OCEOF
 
 chmod 755 /usr/local/bin/oc
@@ -220,7 +231,7 @@ User=openclaw
 Group=openclaw
 Environment=OPENCLAW_CONFIG_PATH=/home/openclaw/.openclaw/openclaw.json
 Environment=OPENCLAW_STATE_DIR=/home/openclaw/.openclaw/state
-EnvironmentFile=/opt/openclaw/openclaw.env
+EnvironmentFile=/home/openclaw/.openclaw/.env
 ExecStart=$OPENCLAW_BIN gateway
 Restart=always
 RestartSec=5
