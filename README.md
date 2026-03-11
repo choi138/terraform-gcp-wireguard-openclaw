@@ -151,6 +151,7 @@ See `apps/backend/README.md` for backend-only commands and environment details.
 - `openclaw_version`
 - optional model and integration secrets such as:
   - `openclaw_anthropic_api_key_secret`
+  - `openclaw_openai_api_key_secret`
   - `openclaw_telegram_bot_token_secret`
 
 ## Secret Manager Setup

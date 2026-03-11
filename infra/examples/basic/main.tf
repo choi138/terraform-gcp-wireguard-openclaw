@@ -45,6 +45,7 @@ module "wireguard" {
   openclaw_gateway_password_secret = var.openclaw_gateway_password_secret
 
   openclaw_anthropic_api_key_secret  = var.openclaw_anthropic_api_key_secret
+  openclaw_openai_api_key_secret     = var.openclaw_openai_api_key_secret
   openclaw_model_primary             = var.openclaw_model_primary
   openclaw_model_fallbacks           = var.openclaw_model_fallbacks
   openclaw_telegram_bot_token_secret = var.openclaw_telegram_bot_token_secret

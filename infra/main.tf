@@ -11,8 +11,9 @@ locals {
   openclaw_password_secret = trimspace(var.openclaw_gateway_password_secret)
   openclaw_version         = trimspace(var.openclaw_version)
 
-  openclaw_bot_token_secret = var.openclaw_telegram_bot_token_secret == null ? "" : trimspace(var.openclaw_telegram_bot_token_secret)
-  openclaw_api_key_secret   = var.openclaw_anthropic_api_key_secret == null ? "" : trimspace(var.openclaw_anthropic_api_key_secret)
+  openclaw_bot_token_secret         = var.openclaw_telegram_bot_token_secret == null ? "" : trimspace(var.openclaw_telegram_bot_token_secret)
+  openclaw_anthropic_api_key_secret = var.openclaw_anthropic_api_key_secret == null ? "" : trimspace(var.openclaw_anthropic_api_key_secret)
+  openclaw_openai_api_key_secret    = var.openclaw_openai_api_key_secret == null ? "" : trimspace(var.openclaw_openai_api_key_secret)
 
   openclaw_model_primary = trimspace(var.openclaw_model_primary)
   openclaw_model_fallbacks = [
@@ -34,24 +35,34 @@ locals {
     can(regex("/versions/[^/]+$", local.wgeasy_password_hash_secret)) ? local.wgeasy_password_hash_secret : "${local.wgeasy_password_hash_secret}/versions/latest"
   )
 
-  openclaw_password_secret_id  = local.openclaw_password_secret == "" ? "" : split("/versions/", local.openclaw_password_secret)[0]
-  openclaw_api_key_secret_id   = local.openclaw_api_key_secret == "" ? "" : split("/versions/", local.openclaw_api_key_secret)[0]
-  openclaw_bot_token_secret_id = local.openclaw_bot_token_secret == "" ? "" : split("/versions/", local.openclaw_bot_token_secret)[0]
+  openclaw_password_secret_id          = local.openclaw_password_secret == "" ? "" : split("/versions/", local.openclaw_password_secret)[0]
+  openclaw_anthropic_api_key_secret_id = local.openclaw_anthropic_api_key_secret == "" ? "" : split("/versions/", local.openclaw_anthropic_api_key_secret)[0]
+  openclaw_openai_api_key_secret_id    = local.openclaw_openai_api_key_secret == "" ? "" : split("/versions/", local.openclaw_openai_api_key_secret)[0]
+  openclaw_bot_token_secret_id         = local.openclaw_bot_token_secret == "" ? "" : split("/versions/", local.openclaw_bot_token_secret)[0]
 
   openclaw_password_secret_version = local.openclaw_password_secret == "" ? "" : (
     can(regex("/versions/[^/]+$", local.openclaw_password_secret)) ? local.openclaw_password_secret : "${local.openclaw_password_secret}/versions/latest"
   )
 
-  openclaw_api_key_secret_version = local.openclaw_api_key_secret == "" ? "" : (
-    can(regex("/versions/[^/]+$", local.openclaw_api_key_secret)) ? local.openclaw_api_key_secret : "${local.openclaw_api_key_secret}/versions/latest"
+  openclaw_anthropic_api_key_secret_version = local.openclaw_anthropic_api_key_secret == "" ? "" : (
+    can(regex("/versions/[^/]+$", local.openclaw_anthropic_api_key_secret)) ? local.openclaw_anthropic_api_key_secret : "${local.openclaw_anthropic_api_key_secret}/versions/latest"
+  )
+
+  openclaw_openai_api_key_secret_version = local.openclaw_openai_api_key_secret == "" ? "" : (
+    can(regex("/versions/[^/]+$", local.openclaw_openai_api_key_secret)) ? local.openclaw_openai_api_key_secret : "${local.openclaw_openai_api_key_secret}/versions/latest"
   )
 
   openclaw_bot_token_secret_version = local.openclaw_bot_token_secret == "" ? "" : (
     can(regex("/versions/[^/]+$", local.openclaw_bot_token_secret)) ? local.openclaw_bot_token_secret : "${local.openclaw_bot_token_secret}/versions/latest"
   )
 
-  vpn_secret_ids      = toset(compact([local.wgeasy_password_secret_id, local.wgeasy_password_hash_secret_id]))
-  openclaw_secret_ids = toset(compact([local.openclaw_password_secret_id, local.openclaw_api_key_secret_id, local.openclaw_bot_token_secret_id]))
+  vpn_secret_ids = toset(compact([local.wgeasy_password_secret_id, local.wgeasy_password_hash_secret_id]))
+  openclaw_secret_ids = toset(compact([
+    local.openclaw_password_secret_id,
+    local.openclaw_anthropic_api_key_secret_id,
+    local.openclaw_openai_api_key_secret_id,
+    local.openclaw_bot_token_secret_id,
+  ]))
 
   openclaw_telegram_enabled = local.openclaw_bot_token_secret_version != ""
 
@@ -273,6 +284,12 @@ resource "google_compute_instance" "vpn" {
       wgeasy_password_hash_secret_version = local.wgeasy_password_hash_secret_version
     })
   }
+
+  lifecycle {
+    # Keep startup script updates in-place via metadata and ignore the legacy
+    # provider field that would otherwise force instance replacement.
+    ignore_changes = [metadata_startup_script]
+  }
 }
 
 resource "google_compute_instance" "openclaw" {
@@ -318,9 +335,16 @@ resource "google_compute_instance" "openclaw" {
       openclaw_version                           = local.openclaw_version
       openclaw_telegram_bot_token_secret_version = local.openclaw_bot_token_secret_version
       openclaw_telegram_enabled                  = local.openclaw_telegram_enabled
-      openclaw_anthropic_api_key_secret_version  = local.openclaw_api_key_secret_version
+      openclaw_anthropic_api_key_secret_version  = local.openclaw_anthropic_api_key_secret_version
+      openclaw_openai_api_key_secret_version     = local.openclaw_openai_api_key_secret_version
       openclaw_model_primary                     = local.openclaw_model_primary
       openclaw_model_fallbacks_json              = local.openclaw_model_fallbacks_json
     })
+  }
+
+  lifecycle {
+    # Keep startup script updates in-place via metadata and ignore the legacy
+    # provider field that would otherwise force instance replacement.
+    ignore_changes = [metadata_startup_script]
   }
 }

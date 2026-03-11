@@ -12,6 +12,7 @@ Suggested checks for this module:
 - wg-easy credential source (`wgeasy_password_secret` or `wgeasy_password_hash_secret`)
 - `openclaw_gateway_password_secret`
 - optional `openclaw_anthropic_api_key_secret`
+- optional `openclaw_openai_api_key_secret`
 - optional `openclaw_telegram_bot_token_secret`
 
 2) Use only `*_secret` variables in `infra/examples/basic/terraform.tfvars`.

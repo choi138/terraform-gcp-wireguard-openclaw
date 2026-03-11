@@ -26,7 +26,9 @@ openclaw_gateway_password_secret = "projects/YOUR_GCP_PROJECT_ID/secrets/opencla
 
 # Optional OpenClaw settings
 # openclaw_gateway_port = 18789
-# openclaw_version = "2026.1.30"
+# openclaw_version = "2026.3.8"
 # openclaw_anthropic_api_key_secret = "projects/YOUR_GCP_PROJECT_ID/secrets/openclaw-anthropic-api-key"
+# openclaw_openai_api_key_secret = "projects/YOUR_GCP_PROJECT_ID/secrets/openclaw-openai-api-key"
+# openclaw_model_primary = "openai/gpt-5.4"
 # openclaw_telegram_bot_token_secret = "projects/YOUR_GCP_PROJECT_ID/secrets/openclaw-telegram-token"
 # openclaw_enable_public_ip = false

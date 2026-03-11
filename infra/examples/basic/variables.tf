@@ -89,6 +89,11 @@ variable "openclaw_anthropic_api_key_secret" {
   default = null
 }
 
+variable "openclaw_openai_api_key_secret" {
+  type    = string
+  default = null
+}
+
 variable "openclaw_model_primary" {
   type    = string
   default = "anthropic/claude-opus-4-6"

@@ -60,8 +60,12 @@ if ! command -v node >/dev/null 2>&1; then
   apt-get install -y nodejs
 fi
 
-# Install OpenClaw CLI if missing.
-if ! command -v openclaw >/dev/null 2>&1; then
+# Install or upgrade OpenClaw CLI to the pinned version.
+CURRENT_OPENCLAW_VERSION=""
+if command -v openclaw >/dev/null 2>&1; then
+  CURRENT_OPENCLAW_VERSION="$(npm list -g openclaw --depth=0 2>/dev/null | sed -n 's/.*openclaw@\([^ ]*\).*/\1/p' | head -n 1 || true)"
+fi
+if [ "$CURRENT_OPENCLAW_VERSION" != "${openclaw_version}" ]; then
   npm config set fund false
   npm config set audit false
   npm config set progress false
@@ -121,6 +125,14 @@ OPENCLAW_ANTHROPIC_API_KEY_VALUE="$(fetch_secret "${openclaw_anthropic_api_key_s
 }
 %{ endif }
 
+OPENCLAW_OPENAI_API_KEY_VALUE=""
+%{ if openclaw_openai_api_key_secret_version != "" }
+OPENCLAW_OPENAI_API_KEY_VALUE="$(fetch_secret "${openclaw_openai_api_key_secret_version}")" || {
+  echo "Unable to read openclaw_openai_api_key_secret_version from Secret Manager." >&2
+  exit 1
+}
+%{ endif }
+
 OPENCLAW_TELEGRAM_BOT_TOKEN_VALUE=""
 %{ if openclaw_telegram_bot_token_secret_version != "" }
 OPENCLAW_TELEGRAM_BOT_TOKEN_VALUE="$(fetch_secret "${openclaw_telegram_bot_token_secret_version}")" || {
@@ -129,19 +141,27 @@ OPENCLAW_TELEGRAM_BOT_TOKEN_VALUE="$(fetch_secret "${openclaw_telegram_bot_token
 }
 %{ endif }
 
-# Environment file to avoid shell expansion of secrets.
-cat > /opt/openclaw/openclaw.env <<'ENVEOF'
+# Shared environment file for the systemd service and CLI wrapper.
+SHARED_OPENCLAW_ENV="/home/openclaw/.openclaw/.env"
+cat > "$SHARED_OPENCLAW_ENV" <<'ENVEOF'
 ENVEOF
-printf 'OPENCLAW_GATEWAY_PASSWORD=%s\n' "$OPENCLAW_GATEWAY_PASSWORD_VALUE" >> /opt/openclaw/openclaw.env
+printf 'OPENCLAW_GATEWAY_PASSWORD=%s\n' "$OPENCLAW_GATEWAY_PASSWORD_VALUE" >> "$SHARED_OPENCLAW_ENV"
 
 if [ -n "$OPENCLAW_ANTHROPIC_API_KEY_VALUE" ]; then
-  printf 'ANTHROPIC_API_KEY=%s\n' "$OPENCLAW_ANTHROPIC_API_KEY_VALUE" >> /opt/openclaw/openclaw.env
+  printf 'ANTHROPIC_API_KEY=%s\n' "$OPENCLAW_ANTHROPIC_API_KEY_VALUE" >> "$SHARED_OPENCLAW_ENV"
+fi
+
+if [ -n "$OPENCLAW_OPENAI_API_KEY_VALUE" ]; then
+  printf 'OPENAI_API_KEY=%s\n' "$OPENCLAW_OPENAI_API_KEY_VALUE" >> "$SHARED_OPENCLAW_ENV"
 fi
 
 if [ -n "$OPENCLAW_TELEGRAM_BOT_TOKEN_VALUE" ]; then
-  printf 'TELEGRAM_BOT_TOKEN=%s\n' "$OPENCLAW_TELEGRAM_BOT_TOKEN_VALUE" >> /opt/openclaw/openclaw.env
+  printf 'TELEGRAM_BOT_TOKEN=%s\n' "$OPENCLAW_TELEGRAM_BOT_TOKEN_VALUE" >> "$SHARED_OPENCLAW_ENV"
 fi
 
+chown openclaw:openclaw "$SHARED_OPENCLAW_ENV"
+chmod 600 "$SHARED_OPENCLAW_ENV"
+cp "$SHARED_OPENCLAW_ENV" /opt/openclaw/openclaw.env
 chmod 600 /opt/openclaw/openclaw.env
 
 # Write OpenClaw config.
@@ -183,10 +203,17 @@ chmod 600 /home/openclaw/.openclaw/openclaw.json
 cat > /usr/local/bin/oc <<'OCEOF'
 #!/bin/bash
 set -euo pipefail
-exec sudo -u openclaw env \
-  OPENCLAW_CONFIG_PATH=/home/openclaw/.openclaw/openclaw.json \
-  OPENCLAW_STATE_DIR=/home/openclaw/.openclaw/state \
-  openclaw "$@"
+exec sudo -u openclaw /bin/bash -lc '
+set -euo pipefail
+set -a
+if [ -f /home/openclaw/.openclaw/.env ]; then
+  . /home/openclaw/.openclaw/.env
+fi
+set +a
+export OPENCLAW_CONFIG_PATH=/home/openclaw/.openclaw/openclaw.json
+export OPENCLAW_STATE_DIR=/home/openclaw/.openclaw/state
+exec openclaw "$@"
+' bash "$@"
 OCEOF
 
 chmod 755 /usr/local/bin/oc
@@ -204,7 +231,7 @@ User=openclaw
 Group=openclaw
 Environment=OPENCLAW_CONFIG_PATH=/home/openclaw/.openclaw/openclaw.json
 Environment=OPENCLAW_STATE_DIR=/home/openclaw/.openclaw/state
-EnvironmentFile=/opt/openclaw/openclaw.env
+EnvironmentFile=/home/openclaw/.openclaw/.env
 ExecStart=$OPENCLAW_BIN gateway
 Restart=always
 RestartSec=5

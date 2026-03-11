@@ -191,7 +191,7 @@ variable "openclaw_gateway_password_secret" {
 variable "openclaw_version" {
   type        = string
   description = "OpenClaw CLI version to install (pinned for security)."
-  default     = "2026.1.30"
+  default     = "2026.3.8"
 
   validation {
     condition     = trimspace(var.openclaw_version) != ""
@@ -210,6 +210,20 @@ variable "openclaw_anthropic_api_key_secret" {
       can(regex("^projects/[^/]+/secrets/[^/]+(?:/versions/[^/]+)?$", trimspace(var.openclaw_anthropic_api_key_secret)))
     )
     error_message = "openclaw_anthropic_api_key_secret must match projects/<project>/secrets/<name>[/versions/<version>]."
+  }
+}
+
+variable "openclaw_openai_api_key_secret" {
+  type        = string
+  description = "Secret Manager reference for OpenAI API key. Format: projects/<project>/secrets/<name> or projects/<project>/secrets/<name>/versions/<version>."
+  default     = null
+
+  validation {
+    condition = var.openclaw_openai_api_key_secret == null || (
+      trimspace(var.openclaw_openai_api_key_secret) != "" &&
+      can(regex("^projects/[^/]+/secrets/[^/]+(?:/versions/[^/]+)?$", trimspace(var.openclaw_openai_api_key_secret)))
+    )
+    error_message = "openclaw_openai_api_key_secret must match projects/<project>/secrets/<name>[/versions/<version>]."
   }
 }
 
