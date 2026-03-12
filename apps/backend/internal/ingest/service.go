@@ -188,7 +188,7 @@ func (s *Service) ingest(ctx context.Context, key domain.EventKey, schemaVersion
 		if completionErr != nil {
 			return domain.IngestResult{}, completionErr
 		}
-		if result.Outcome == domain.IngestOutcomeRetryScheduled || result.Outcome == domain.IngestOutcomeDeadLetter {
+		if result.Outcome == domain.IngestOutcomeRetryScheduled {
 			return result, nil
 		}
 		return result, err

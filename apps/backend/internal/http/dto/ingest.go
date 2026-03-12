@@ -104,6 +104,9 @@ func DecodeConversationEvent(r *http.Request, maxBytes int64) (domain.Conversati
 	if payload.Message != nil && payload.Message.CreatedAt.Before(payload.Conversation.StartedAt) {
 		messages = append(messages, "message.created_at must be greater than or equal to conversation.started_at")
 	}
+	if payload.Message != nil && payload.Conversation.EndedAt != nil && payload.Message.CreatedAt.After(*payload.Conversation.EndedAt) {
+		messages = append(messages, "message.created_at must be less than or equal to conversation.ended_at")
+	}
 	if len(messages) > 0 {
 		return domain.ConversationEventInput{}, ValidationError{Messages: messages}
 	}
@@ -178,6 +181,9 @@ func DecodeRequestAttemptEvent(r *http.Request, maxBytes int64) (domain.RequestA
 	}
 	if payload.Attempt.CreatedAt.Before(payload.Conversation.StartedAt) {
 		messages = append(messages, "attempt.created_at must be greater than or equal to conversation.started_at")
+	}
+	if payload.Conversation.EndedAt != nil && payload.Attempt.CreatedAt.After(*payload.Conversation.EndedAt) {
+		messages = append(messages, "attempt.created_at must be less than or equal to conversation.ended_at")
 	}
 	if len(messages) > 0 {
 		return domain.RequestAttemptEventInput{}, ValidationError{Messages: messages}

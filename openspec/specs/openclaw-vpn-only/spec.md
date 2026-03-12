@@ -68,16 +68,16 @@ The system MUST grant secret access permissions only to the specific secrets req
 - **WHEN** a VM service account requests a secret outside its configured bindings
 - **THEN** Secret Manager access is denied
 
-### Requirement: Backward compatibility for plaintext inputs
-The system MUST continue to support existing plaintext sensitive variables when Secret Manager reference variables are not provided.
+### Requirement: Secret Manager references are the supported source for sensitive bootstrap inputs
+The system MUST use Secret Manager reference variables for supported sensitive bootstrap inputs and does not need plaintext fallback variables in this module contract.
 
-#### Scenario: Existing plaintext configuration is used
-- **WHEN** users keep current plaintext-sensitive inputs and do not set secret references
-- **THEN** module behavior remains compatible with current deployments
+#### Scenario: Secret reference configuration is used
+- **WHEN** users provide the supported Secret Manager reference variables for sensitive bootstrap inputs
+- **THEN** the module provisions successfully without requiring separate plaintext credential variables
 
-### Requirement: Mutual exclusivity of secret sources
-The system MUST enforce mutually exclusive source rules for each credential that supports both plaintext and secret-reference forms.
+### Requirement: Mutually exclusive secret reference alternatives
+The system MUST enforce mutually exclusive source rules for credentials that have multiple Secret Manager-backed variants.
 
-#### Scenario: Both sources are set for one credential
-- **WHEN** a plaintext value and a secret-reference value are both configured for the same credential
+#### Scenario: Both secret-backed alternatives are set for one credential
+- **WHEN** two mutually exclusive Secret Manager-backed variants are configured for the same credential
 - **THEN** Terraform validation fails with a clear error message

@@ -147,6 +147,80 @@ func TestDecodeRequestAttemptRequiresScalarFields(t *testing.T) {
 	}
 }
 
+func TestDecodeConversationEventRejectsMessageAfterConversationEnd(t *testing.T) {
+	body := `{
+		"schema_version": 1,
+		"source": "openclaw",
+		"event_id": "evt-6",
+		"occurred_at": "2026-03-11T08:00:05Z",
+		"account": {"external_id":"acct-1","email":"ops@example.com","status":"active"},
+		"conversation": {
+			"external_id":"conv-1",
+			"channel":"telegram",
+			"status":"completed",
+			"started_at":"2026-03-11T08:00:00Z",
+			"ended_at":"2026-03-11T08:00:04Z"
+		},
+		"message": {"external_id":"msg-1","role":"user","content_masked":"hello","created_at":"2026-03-11T08:00:05Z"}
+	}`
+	req := httptest.NewRequest("POST", "/v1/ingest/conversation-events", strings.NewReader(body))
+
+	_, err := DecodeConversationEvent(req, 2048)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+
+	validationErr, ok := err.(ValidationError)
+	if !ok {
+		t.Fatalf("expected ValidationError, got %T", err)
+	}
+	if !containsMessage(validationErr.Messages, "message.created_at must be less than or equal to conversation.ended_at") {
+		t.Fatalf("expected ended_at validation message, got %+v", validationErr.Messages)
+	}
+}
+
+func TestDecodeRequestAttemptRejectsAttemptAfterConversationEnd(t *testing.T) {
+	body := `{
+		"schema_version": 1,
+		"source": "openclaw",
+		"event_id": "evt-7",
+		"occurred_at": "2026-03-11T08:00:05Z",
+		"account": {"external_id":"acct-1","email":"ops@example.com","status":"active"},
+		"conversation": {
+			"external_id":"conv-1",
+			"channel":"telegram",
+			"status":"completed",
+			"started_at":"2026-03-11T08:00:00Z",
+			"ended_at":"2026-03-11T08:00:04Z"
+		},
+		"attempt": {
+			"external_id":"attempt-1",
+			"provider":"anthropic",
+			"model":"claude",
+			"tokens_in":1,
+			"tokens_out":0,
+			"cost_usd":0,
+			"latency_ms":5,
+			"success":true,
+			"created_at":"2026-03-11T08:00:05Z"
+		}
+	}`
+	req := httptest.NewRequest("POST", "/v1/ingest/request-attempt", strings.NewReader(body))
+
+	_, err := DecodeRequestAttemptEvent(req, 2048)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+
+	validationErr, ok := err.(ValidationError)
+	if !ok {
+		t.Fatalf("expected ValidationError, got %T", err)
+	}
+	if !containsMessage(validationErr.Messages, "attempt.created_at must be less than or equal to conversation.ended_at") {
+		t.Fatalf("expected ended_at validation message, got %+v", validationErr.Messages)
+	}
+}
+
 func containsMessage(messages []string, want string) bool {
 	for _, message := range messages {
 		if message == want {

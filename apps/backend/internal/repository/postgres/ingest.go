@@ -133,7 +133,9 @@ ON CONFLICT (source) DO UPDATE
 SET snapshot_id = EXCLUDED.snapshot_id,
     captured_at = EXCLUDED.captured_at,
     updated_at = NOW()
-`
+WHERE infra_status_latest.captured_at IS NULL
+   OR EXCLUDED.captured_at >= infra_status_latest.captured_at
+	`
 	if _, err := tx.ExecContext(ctx, upsertLatest, snapshot.Source, snapshotID, snapshot.CapturedAt); err != nil {
 		_ = tx.Rollback()
 		return wrapDBError(err)

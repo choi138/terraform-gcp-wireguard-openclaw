@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -71,10 +72,10 @@ func LoadFromEnv() (Config, error) {
 
 	cfg := Config{
 		Addr:                      getEnv("OPS_API_ADDR", ":8080"),
-		AdminToken:                os.Getenv("OPS_API_ADMIN_TOKEN"),
-		IngestToken:               os.Getenv("OPS_API_INGEST_TOKEN"),
+		AdminToken:                strings.TrimSpace(os.Getenv("OPS_API_ADMIN_TOKEN")),
+		IngestToken:               strings.TrimSpace(os.Getenv("OPS_API_INGEST_TOKEN")),
 		AllowMemoryFallback:       allowMemoryFallback,
-		DatabaseDSN:               os.Getenv("OPS_API_DB_DSN"),
+		DatabaseDSN:               strings.TrimSpace(os.Getenv("OPS_API_DB_DSN")),
 		DatabaseDriver:            getEnv("OPS_API_DB_DRIVER", "postgres"),
 		ReadTimeout:               time.Duration(readTimeoutSec) * time.Second,
 		WriteTimeout:              time.Duration(writeTimeoutSec) * time.Second,

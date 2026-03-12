@@ -506,7 +506,10 @@ func writeValidationError(w http.ResponseWriter, err error) {
 }
 
 func writeIngestResponse(w http.ResponseWriter, result domain.IngestResult, err error) {
+	var validationErr dto.ValidationError
 	switch {
+	case errors.As(err, &validationErr), errors.Is(err, repository.ErrInvalidInput):
+		writeValidationError(w, err)
 	case err == nil && result.Outcome == domain.IngestOutcomeAccepted:
 		writeJSON(w, http.StatusCreated, result)
 	case err == nil && result.Outcome == domain.IngestOutcomeDuplicate:
@@ -530,12 +533,18 @@ func (a *API) writeAudit(ctx context.Context, event domain.AuditEvent) {
 }
 
 func (a *API) writeDetachedAudit(ctx context.Context, event domain.AuditEvent) {
+	if a.audit == nil {
+		return
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	auditCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), detachedAuditTimeout)
-	defer cancel()
-	a.writeAudit(auditCtx, event)
+	baseCtx := context.WithoutCancel(ctx)
+	go func() {
+		auditCtx, cancel := context.WithTimeout(baseCtx, detachedAuditTimeout)
+		defer cancel()
+		a.writeAudit(auditCtx, event)
+	}()
 }
 
 func actorOrUnknown(ctx context.Context) string {

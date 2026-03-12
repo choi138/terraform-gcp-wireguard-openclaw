@@ -1,7 +1,9 @@
 package httpapi_test
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -14,6 +16,7 @@ import (
 	"github.com/choegeun-won/terraform-gcp-wireguard-openclaw/apps/backend/internal/domain"
 	httpapi "github.com/choegeun-won/terraform-gcp-wireguard-openclaw/apps/backend/internal/http"
 	"github.com/choegeun-won/terraform-gcp-wireguard-openclaw/apps/backend/internal/ingest"
+	"github.com/choegeun-won/terraform-gcp-wireguard-openclaw/apps/backend/internal/repository"
 	"github.com/choegeun-won/terraform-gcp-wireguard-openclaw/apps/backend/internal/repository/memory"
 	"github.com/choegeun-won/terraform-gcp-wireguard-openclaw/apps/backend/internal/security"
 )
@@ -288,7 +291,7 @@ func TestSecurityAnalyzeRoutePersistsFindingsAndAudit(t *testing.T) {
 		t.Fatalf("expected at least 6 findings, got %d", len(response.Findings))
 	}
 
-	events := store.AuditEvents()
+	events := waitForAuditEvents(t, store, 1)
 	if len(events) == 0 {
 		t.Fatal("expected audit event for security analysis")
 	}
@@ -313,6 +316,7 @@ func TestSecurityFindingsRouteFiltersBySeverityAndWritesReadAudit(t *testing.T) 
 	req.Header.Set("Authorization", "Bearer admin-token")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
+	waitForAuditEvents(t, store, 1)
 
 	req = httptest.NewRequest(http.MethodGet, "/v1/security/findings?severity=critical&page=1&page_size=10&order=desc", nil)
 	req.Header.Set("Authorization", "Bearer admin-token")
@@ -354,6 +358,63 @@ func TestSecurityFindingsRouteFiltersBySeverityAndWritesReadAudit(t *testing.T) 
 	}
 	if last.ResourceType != "security" {
 		t.Fatalf("expected resource type security, got %q", last.ResourceType)
+	}
+}
+
+func TestIngestRouteReturnsBadRequestForPermanentServiceError(t *testing.T) {
+	store := memory.NewStore()
+	deps := testDependencies(store)
+	deps.Ingest = invalidInputIngestWriter{}
+
+	h := httpapi.NewRouter(config.Config{
+		AdminToken:         "admin-token",
+		IngestToken:        "ingest-token",
+		IngestMaxBodyBytes: 1 << 20,
+	}, deps, testLogger())
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/ingest/conversation-events", strings.NewReader(validConversationEventJSON()))
+	req.Header.Set("Authorization", "Bearer ingest-token")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d body=%s", http.StatusBadRequest, rr.Code, rr.Body.String())
+	}
+}
+
+func TestSecurityAnalyzeRouteDoesNotBlockOnDetachedAuditWrite(t *testing.T) {
+	store := memory.NewStore()
+	audit := newBlockingAuditWriter(store)
+	deps := testDependencies(store)
+	deps.Audit = audit
+
+	h := httpapi.NewRouter(config.Config{
+		AdminToken:           "admin-token",
+		IngestToken:          "ingest-token",
+		SecurityMaxBodyBytes: 1 << 20,
+	}, deps, testLogger())
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/security/analyze-tfvars", strings.NewReader(validSecurityAnalysisJSON()))
+	req.Header.Set("Authorization", "Bearer admin-token")
+	rr := httptest.NewRecorder()
+
+	done := make(chan struct{})
+	go func() {
+		h.ServeHTTP(rr, req)
+		close(done)
+	}()
+
+	<-audit.started
+	select {
+	case <-done:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected response to finish before detached audit write completed")
+	}
+
+	close(audit.release)
+	events := waitForAuditEvents(t, store, 1)
+	if len(events) != 1 {
+		t.Fatalf("expected one detached audit event, got %d", len(events))
 	}
 }
 
@@ -402,4 +463,57 @@ func validSecurityAnalysisJSON() string {
 			"openclaw_gateway_port": 18789
 		}
 	}`
+}
+
+type invalidInputIngestWriter struct{}
+
+func (invalidInputIngestWriter) IngestConversationEvent(context.Context, domain.ConversationEventInput) (domain.IngestResult, error) {
+	return domain.IngestResult{}, fmt.Errorf("%w: invalid ingest payload", repository.ErrInvalidInput)
+}
+
+func (invalidInputIngestWriter) IngestInfraSnapshot(context.Context, domain.InfraSnapshotInput) (domain.IngestResult, error) {
+	return domain.IngestResult{}, fmt.Errorf("%w: invalid ingest payload", repository.ErrInvalidInput)
+}
+
+func (invalidInputIngestWriter) IngestRequestAttempt(context.Context, domain.RequestAttemptEventInput) (domain.IngestResult, error) {
+	return domain.IngestResult{}, fmt.Errorf("%w: invalid ingest payload", repository.ErrInvalidInput)
+}
+
+func (invalidInputIngestWriter) GetStatus(context.Context) (domain.IngestStatus, error) {
+	return domain.IngestStatus{}, nil
+}
+
+type blockingAuditWriter struct {
+	*memory.Store
+	started chan struct{}
+	release chan struct{}
+}
+
+func newBlockingAuditWriter(store *memory.Store) *blockingAuditWriter {
+	return &blockingAuditWriter{
+		Store:   store,
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+}
+
+func (w *blockingAuditWriter) InsertAuditEvent(ctx context.Context, event domain.AuditEvent) error {
+	close(w.started)
+	<-w.release
+	return w.Store.InsertAuditEvent(ctx, event)
+}
+
+func waitForAuditEvents(t *testing.T, store *memory.Store, want int) []domain.AuditEvent {
+	t.Helper()
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		events := store.AuditEvents()
+		if len(events) >= want {
+			return events
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	events := store.AuditEvents()
+	t.Fatalf("expected at least %d audit events, got %d", want, len(events))
+	return nil
 }

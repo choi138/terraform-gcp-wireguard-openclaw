@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"time"
 
@@ -300,11 +301,11 @@ func (s *Store) upsertAttempt(source string, conversationID int64, attempt domai
 }
 
 func ingestKey(source, externalID string) string {
-	return source + ":" + externalID
+	return encodeKeyPart(source, externalID)
 }
 
 func ingestEventKey(eventType, source, eventID string) string {
-	return eventType + ":" + source + ":" + eventID
+	return encodeKeyPart(eventType, source, eventID)
 }
 
 func isLeaseableInMemory(event domain.IngestEventRecord, now, staleBefore time.Time) bool {
@@ -323,4 +324,12 @@ func leaseSortTime(event domain.IngestEventRecord) time.Time {
 		return event.NextRetryAt
 	}
 	return event.LastAttemptAt
+}
+
+func encodeKeyPart(parts ...string) string {
+	encoded := ""
+	for _, part := range parts {
+		encoded += fmt.Sprintf("%d:%s|", len(part), part)
+	}
+	return encoded
 }

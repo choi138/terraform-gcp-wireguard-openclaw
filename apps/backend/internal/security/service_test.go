@@ -126,6 +126,22 @@ func TestComputeFingerprintIgnoresMutablePresentationFields(t *testing.T) {
 	}
 }
 
+func TestOSLoginRuleIgnoresMissingTfvarsKey(t *testing.T) {
+	findings := osLoginDisabledRule{}.Evaluate(map[string]any{})
+	if len(findings) != 0 {
+		t.Fatalf("expected missing enable_project_oslogin to be treated as unknown, got %+v", findings)
+	}
+}
+
+func TestUnpinnedSecretRuleIgnoresNonSecretManagerValues(t *testing.T) {
+	findings := unpinnedSecretReferenceRule{}.Evaluate(map[string]any{
+		"wgeasy_password_secret": "plain-text-placeholder",
+	})
+	if len(findings) != 0 {
+		t.Fatalf("expected non Secret Manager values to be ignored, got %+v", findings)
+	}
+}
+
 func insecureTfvarsFixture() map[string]any {
 	return map[string]any{
 		"openclaw_enable_public_ip":      true,

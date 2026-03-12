@@ -104,3 +104,15 @@ func TestLoadFromEnvRejectsMatchingAdminAndIngestTokens(t *testing.T) {
 		t.Fatal("expected matching admin and ingest tokens to fail")
 	}
 }
+
+func TestLoadFromEnvRejectsWhitespaceOnlyTokens(t *testing.T) {
+	t.Setenv("OPS_API_ADMIN_TOKEN", "   ")
+	t.Setenv("OPS_API_INGEST_TOKEN", "\t")
+	t.Setenv("OPS_API_ALLOW_MEMORY_FALLBACK", "true")
+	t.Setenv("OPS_API_DB_DSN", "")
+
+	_, err := LoadFromEnv()
+	if err == nil {
+		t.Fatal("expected whitespace-only tokens to fail")
+	}
+}

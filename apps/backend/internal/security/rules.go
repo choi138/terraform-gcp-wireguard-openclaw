@@ -69,7 +69,7 @@ func (osLoginDisabledRule) ID() string      { return "project-oslogin-disabled" 
 func (osLoginDisabledRule) Version() string { return "1.0.0" }
 func (r osLoginDisabledRule) Evaluate(tfvars map[string]any) []Match {
 	enabled, ok := boolValue(tfvars, "enable_project_oslogin")
-	if ok && enabled {
+	if !ok || enabled {
 		return nil
 	}
 	return []Match{{
@@ -130,7 +130,11 @@ func (r unpinnedSecretReferenceRule) Evaluate(tfvars map[string]any) []Match {
 		if !ok || value == "" {
 			continue
 		}
-		if strings.Contains(value, "/versions/") && !strings.HasSuffix(value, "/versions/latest") {
+		match := secretRefPattern.FindStringSubmatch(value)
+		if len(match) == 0 {
+			continue
+		}
+		if match[2] != "" && match[2] != "latest" {
 			continue
 		}
 		findings = append(findings, Match{

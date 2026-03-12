@@ -62,3 +62,12 @@ func TestAuditEventsReturnsCopies(t *testing.T) {
 		t.Fatalf("expected stored path to remain unchanged, got %v", got)
 	}
 }
+
+func TestEncodedKeysAvoidSeparatorCollisions(t *testing.T) {
+	if first, second := ingestKey("source:a", "id"), ingestKey("source", "a:id"); first == second {
+		t.Fatalf("expected external identity keys to remain distinct, got %q", first)
+	}
+	if first, second := ingestEventKey("conversation:event", "source", "id"), ingestEventKey("conversation", "event:source", "id"); first == second {
+		t.Fatalf("expected ingest event keys to remain distinct, got %q", first)
+	}
+}

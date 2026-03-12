@@ -316,6 +316,23 @@ func TestCompletionFailureSchedulesRetryWithoutReplayingPayload(t *testing.T) {
 	}
 }
 
+func TestCompletionFailureDeadLettersAndReturnsError(t *testing.T) {
+	repo := &fatalCompletionRepo{
+		Store: memory.NewStore(),
+	}
+	service := NewService(repo, Config{
+		RetryMaxAttempts: 3,
+	})
+
+	result, err := service.IngestConversationEvent(t.Context(), testConversationEvent("evt-complete-dead-letter"))
+	if err == nil {
+		t.Fatal("expected fatal completion failure to be returned")
+	}
+	if result.Outcome != domain.IngestOutcomeDeadLetter {
+		t.Fatalf("expected dead-letter outcome, got %+v", result)
+	}
+}
+
 func TestIngestThroughputTarget100EventsPerSecond(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping throughput timing check in short mode")
@@ -367,6 +384,10 @@ type recordFailureErrorRepo struct {
 	failingEventID string
 }
 
+type fatalCompletionRepo struct {
+	*memory.Store
+}
+
 func (r *flakyCompletionRepo) PersistConversationEvent(ctx context.Context, event domain.ConversationEventInput) error {
 	r.persistCalls++
 	return r.Store.PersistConversationEvent(ctx, event)
@@ -385,6 +406,10 @@ func (r *recordFailureErrorRepo) RecordEventFailure(ctx context.Context, key dom
 		return domain.IngestResult{}, fmt.Errorf("failed to record retry state")
 	}
 	return r.Store.RecordEventFailure(ctx, key, lastError, nextRetryAt, maxAttempts)
+}
+
+func (r *fatalCompletionRepo) MarkEventCompleted(context.Context, domain.EventKey, time.Time) error {
+	return fmt.Errorf("fatal completion write failure")
 }
 
 func testConversationEvent(eventID string) domain.ConversationEventInput {
