@@ -2,6 +2,7 @@ package ingest
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -85,6 +86,91 @@ func TestDifferentIngestEventTypesCanReuseEventID(t *testing.T) {
 	}
 	if attemptResult.Outcome != domain.IngestOutcomeAccepted {
 		t.Fatalf("expected accepted request attempt ingest, got %s", attemptResult.Outcome)
+	}
+}
+
+func TestProcessDueRetriesContinuesAfterUnexpectedError(t *testing.T) {
+	repo := &recordFailureErrorRepo{
+		Store:          memory.NewStore(),
+		failingEventID: "evt-bad",
+	}
+	service := NewService(repo, Config{
+		RetryBaseDelay:         100 * time.Millisecond,
+		RetryMaxDelay:          500 * time.Millisecond,
+		RetryMaxAttempts:       3,
+		ProcessingLeaseTimeout: time.Second,
+	})
+
+	now := time.Date(2026, 3, 11, 9, 45, 0, 0, time.UTC)
+	service.now = func() time.Time { return now }
+
+	seedRetryEvent(t, repo.Store, marshalJSON(t, testConversationEvent("evt-good")), domain.EventKey{
+		EventType: EventTypeConversation,
+		Source:    "openclaw",
+		EventID:   "evt-good",
+	}, now.Add(-time.Second))
+	seedRetryEvent(t, repo.Store, []byte(`{"broken":`), domain.EventKey{
+		EventType: EventTypeConversation,
+		Source:    "openclaw",
+		EventID:   "evt-bad",
+	}, now.Add(-time.Second))
+
+	result, err := service.ProcessDueRetries(t.Context(), 10)
+	if err == nil {
+		t.Fatal("expected batch processing to return the unexpected error")
+	}
+	if result.Processed != 2 {
+		t.Fatalf("expected two leased events, got %+v", result)
+	}
+	if result.Completed != 1 {
+		t.Fatalf("expected second leased event to complete despite the first failure, got %+v", result)
+	}
+}
+
+func TestProcessDueRetriesReclaimsStaleProcessingEvents(t *testing.T) {
+	store := memory.NewStore()
+	service := NewService(store, Config{
+		ProcessingLeaseTimeout: time.Second,
+	})
+
+	now := time.Date(2026, 3, 11, 10, 15, 0, 0, time.UTC)
+	service.now = func() time.Time { return now }
+
+	event := testConversationEvent("evt-stale-processing")
+	payload := marshalJSON(t, event)
+	record := domain.IngestEventRecord{
+		EventKey: domain.EventKey{
+			EventType: EventTypeConversation,
+			Source:    event.Source,
+			EventID:   event.EventID,
+		},
+		SchemaVersion: event.SchemaVersion,
+		Status:        domain.IngestEventStatusProcessing,
+		Payload:       payload,
+		AttemptCount:  1,
+		FirstSeenAt:   now.Add(-5 * time.Minute),
+		LastAttemptAt: now.Add(-2 * time.Second),
+	}
+	if _, inserted, err := store.ClaimEvent(t.Context(), record); err != nil {
+		t.Fatalf("expected stale processing event to be claimed, got %v", err)
+	} else if !inserted {
+		t.Fatal("expected stale processing event to be inserted")
+	}
+
+	result, err := service.ProcessDueRetries(t.Context(), 10)
+	if err != nil {
+		t.Fatalf("expected stale processing event to be reclaimed, got %v", err)
+	}
+	if result.Completed != 1 {
+		t.Fatalf("expected one reclaimed event to complete, got %+v", result)
+	}
+
+	status, err := service.GetStatus(t.Context())
+	if err != nil {
+		t.Fatalf("expected ingest status to load, got %v", err)
+	}
+	if status.QueueDepth != 0 || status.Processing != 0 || status.RetryScheduled != 0 {
+		t.Fatalf("expected no stuck events after reclaim, got %+v", status)
 	}
 }
 
@@ -276,6 +362,11 @@ type flakyCompletionRepo struct {
 	persistCalls         int
 }
 
+type recordFailureErrorRepo struct {
+	*memory.Store
+	failingEventID string
+}
+
 func (r *flakyCompletionRepo) PersistConversationEvent(ctx context.Context, event domain.ConversationEventInput) error {
 	r.persistCalls++
 	return r.Store.PersistConversationEvent(ctx, event)
@@ -287,6 +378,13 @@ func (r *flakyCompletionRepo) MarkEventCompleted(ctx context.Context, key domain
 		return fmt.Errorf("%w: simulated completion state write failure", repository.ErrTransient)
 	}
 	return r.Store.MarkEventCompleted(ctx, key, processedAt)
+}
+
+func (r *recordFailureErrorRepo) RecordEventFailure(ctx context.Context, key domain.EventKey, lastError string, nextRetryAt time.Time, maxAttempts int) (domain.IngestResult, error) {
+	if key.EventID == r.failingEventID {
+		return domain.IngestResult{}, fmt.Errorf("failed to record retry state")
+	}
+	return r.Store.RecordEventFailure(ctx, key, lastError, nextRetryAt, maxAttempts)
 }
 
 func testConversationEvent(eventID string) domain.ConversationEventInput {
@@ -347,5 +445,38 @@ func testRequestAttemptEvent(eventID string) domain.RequestAttemptEventInput {
 			Success:    true,
 			CreatedAt:  attemptAt,
 		},
+	}
+}
+
+func marshalJSON(t *testing.T, payload any) []byte {
+	t.Helper()
+
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("expected payload to marshal, got %v", err)
+	}
+	return encoded
+}
+
+func seedRetryEvent(t *testing.T, store *memory.Store, payload []byte, key domain.EventKey, retryAt time.Time) {
+	t.Helper()
+
+	record := domain.IngestEventRecord{
+		EventKey:      key,
+		SchemaVersion: domain.SupportedIngestSchemaVersion,
+		Status:        domain.IngestEventStatusProcessing,
+		Payload:       append([]byte(nil), payload...),
+		AttemptCount:  1,
+		FirstSeenAt:   retryAt.Add(-time.Minute),
+		LastAttemptAt: retryAt.Add(-time.Second),
+	}
+	if _, inserted, err := store.ClaimEvent(context.Background(), record); err != nil {
+		t.Fatalf("expected retry seed event to claim, got %v", err)
+	} else if !inserted {
+		t.Fatal("expected retry seed event to be inserted")
+	}
+
+	if _, err := store.RecordEventFailure(context.Background(), key, "seed retry", retryAt, 3); err != nil {
+		t.Fatalf("expected retry seed event to schedule retry, got %v", err)
 	}
 }

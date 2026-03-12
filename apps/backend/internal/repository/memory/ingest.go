@@ -116,7 +116,7 @@ func (s *Store) RecordEventFailure(_ context.Context, key domain.EventKey, lastE
 	return result, nil
 }
 
-func (s *Store) LeaseRetryBatch(_ context.Context, now time.Time, limit int) ([]domain.IngestEventRecord, error) {
+func (s *Store) LeaseRetryBatch(_ context.Context, now, staleBefore time.Time, limit int) ([]domain.IngestEventRecord, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -126,17 +126,14 @@ func (s *Store) LeaseRetryBatch(_ context.Context, now time.Time, limit int) ([]
 
 	items := make([]domain.IngestEventRecord, 0)
 	for _, event := range s.ingestEvents {
-		if event.Status != domain.IngestEventStatusRetryScheduled {
-			continue
-		}
-		if event.NextRetryAt.After(now) {
+		if !isLeaseableInMemory(event, now, staleBefore) {
 			continue
 		}
 		items = append(items, event)
 	}
 
 	sort.Slice(items, func(i, j int) bool {
-		return items[i].NextRetryAt.Before(items[j].NextRetryAt)
+		return leaseSortTime(items[i]).Before(leaseSortTime(items[j]))
 	})
 	if len(items) > limit {
 		items = items[:limit]
@@ -308,4 +305,22 @@ func ingestKey(source, externalID string) string {
 
 func ingestEventKey(eventType, source, eventID string) string {
 	return eventType + ":" + source + ":" + eventID
+}
+
+func isLeaseableInMemory(event domain.IngestEventRecord, now, staleBefore time.Time) bool {
+	switch event.Status {
+	case domain.IngestEventStatusRetryScheduled:
+		return !event.NextRetryAt.After(now)
+	case domain.IngestEventStatusProcessing:
+		return !event.LastAttemptAt.After(staleBefore)
+	default:
+		return false
+	}
+}
+
+func leaseSortTime(event domain.IngestEventRecord) time.Time {
+	if event.Status == domain.IngestEventStatusRetryScheduled && !event.NextRetryAt.IsZero() {
+		return event.NextRetryAt
+	}
+	return event.LastAttemptAt
 }

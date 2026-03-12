@@ -44,13 +44,9 @@ func TestWithBearerAuthPassesValidToken(t *testing.T) {
 	}
 }
 
-func TestWithBearerAuthDefaultsEmptyActorToAdmin(t *testing.T) {
+func TestWithBearerAuthRejectsEmptyActor(t *testing.T) {
 	h := middleware.WithBearerAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		actor := middleware.ActorFromContext(r.Context())
-		if actor != "admin" {
-			t.Fatalf("expected actor admin in context, got %q", actor)
-		}
-		w.WriteHeader(http.StatusNoContent)
+		t.Fatal("expected handler not to be invoked")
 	}), "expected-token", "")
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/dashboard/summary", nil)
@@ -59,8 +55,8 @@ func TestWithBearerAuthDefaultsEmptyActorToAdmin(t *testing.T) {
 
 	h.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusNoContent {
-		t.Fatalf("expected status %d, got %d", http.StatusNoContent, rr.Code)
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, rr.Code)
 	}
 }
 

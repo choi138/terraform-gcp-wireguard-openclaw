@@ -13,10 +13,11 @@ import (
 )
 
 const (
-	EventTypeConversation   = "conversation_event"
-	EventTypeInfraSnapshot  = "infra_snapshot"
-	EventTypeRequestAttempt = "request_attempt"
-	completionRetryPrefix   = "mark event completed: "
+	EventTypeConversation         = "conversation_event"
+	EventTypeInfraSnapshot        = "infra_snapshot"
+	EventTypeRequestAttempt       = "request_attempt"
+	completionRetryPrefix         = "mark event completed: "
+	defaultProcessingLeaseTimeout = 2 * time.Minute
 )
 
 type Repository interface {
@@ -26,14 +27,15 @@ type Repository interface {
 	PersistRequestAttempt(ctx context.Context, event domain.RequestAttemptEventInput) error
 	MarkEventCompleted(ctx context.Context, key domain.EventKey, processedAt time.Time) error
 	RecordEventFailure(ctx context.Context, key domain.EventKey, lastError string, nextRetryAt time.Time, maxAttempts int) (domain.IngestResult, error)
-	LeaseRetryBatch(ctx context.Context, now time.Time, limit int) ([]domain.IngestEventRecord, error)
+	LeaseRetryBatch(ctx context.Context, now, staleBefore time.Time, limit int) ([]domain.IngestEventRecord, error)
 	GetIngestStatus(ctx context.Context, now time.Time) (domain.IngestStatus, error)
 }
 
 type Config struct {
-	RetryBaseDelay   time.Duration
-	RetryMaxDelay    time.Duration
-	RetryMaxAttempts int
+	RetryBaseDelay         time.Duration
+	RetryMaxDelay          time.Duration
+	RetryMaxAttempts       int
+	ProcessingLeaseTimeout time.Duration
 }
 
 type RetryBatchResult struct {
@@ -61,6 +63,9 @@ func NewService(repo Repository, cfg Config) *Service {
 	}
 	if cfg.RetryMaxAttempts <= 0 {
 		cfg.RetryMaxAttempts = 5
+	}
+	if cfg.ProcessingLeaseTimeout <= 0 {
+		cfg.ProcessingLeaseTimeout = defaultProcessingLeaseTimeout
 	}
 
 	return &Service{
@@ -109,12 +114,15 @@ func (s *Service) ProcessDueRetries(ctx context.Context, limit int) (RetryBatchR
 		limit = 10
 	}
 
-	batch, err := s.repo.LeaseRetryBatch(ctx, s.now(), limit)
+	now := s.now()
+	staleBefore := now.Add(-s.config.ProcessingLeaseTimeout)
+	batch, err := s.repo.LeaseRetryBatch(ctx, now, staleBefore, limit)
 	if err != nil {
 		return RetryBatchResult{}, err
 	}
 
 	result := RetryBatchResult{Processed: len(batch)}
+	var firstErr error
 	for _, item := range batch {
 		err := s.processLeasedEvent(ctx, item)
 		switch {
@@ -125,11 +133,13 @@ func (s *Service) ProcessDueRetries(ctx context.Context, limit int) (RetryBatchR
 		case errors.Is(err, errDeadLettered):
 			result.DeadLettered++
 		default:
-			return result, err
+			if firstErr == nil {
+				firstErr = err
+			}
 		}
 	}
 
-	return result, nil
+	return result, firstErr
 }
 
 var (

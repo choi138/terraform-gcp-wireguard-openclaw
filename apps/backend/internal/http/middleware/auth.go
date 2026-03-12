@@ -21,12 +21,13 @@ func ActorFromContext(ctx context.Context) string {
 }
 
 func WithBearerAuth(next http.Handler, token, actor string) http.Handler {
-	effectiveActor := actor
-	if effectiveActor == "" {
-		effectiveActor = "admin"
-	}
+	effectiveActor := strings.TrimSpace(actor)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if effectiveActor == "" {
+			writeAuthError(w, http.StatusInternalServerError, "bearer actor is not configured")
+			return
+		}
 		if token == "" {
 			writeAuthError(w, http.StatusUnauthorized, "bearer token is not configured")
 			return

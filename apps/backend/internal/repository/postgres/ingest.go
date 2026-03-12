@@ -280,7 +280,7 @@ RETURNING attempt_count, status
 	}, nil
 }
 
-func (s *Store) LeaseRetryBatch(ctx context.Context, now time.Time, limit int) ([]domain.IngestEventRecord, error) {
+func (s *Store) LeaseRetryBatch(ctx context.Context, now, staleBefore time.Time, limit int) ([]domain.IngestEventRecord, error) {
 	if limit <= 0 {
 		limit = 10
 	}
@@ -294,15 +294,21 @@ func (s *Store) LeaseRetryBatch(ctx context.Context, now time.Time, limit int) (
 WITH due AS (
   SELECT event_type, source, event_id
   FROM ingest_events
-  WHERE status = $1
-    AND next_retry_at IS NOT NULL
-    AND next_retry_at <= $2
-  ORDER BY next_retry_at ASC
-  LIMIT $3
+  WHERE (
+      status = $1
+      AND next_retry_at IS NOT NULL
+      AND next_retry_at <= $2
+    )
+    OR (
+      status = $3
+      AND last_attempt_at <= $4
+    )
+  ORDER BY COALESCE(next_retry_at, last_attempt_at) ASC
+  LIMIT $5
   FOR UPDATE SKIP LOCKED
 )
 UPDATE ingest_events AS ie
-SET status = $4,
+SET status = $3,
     attempt_count = ie.attempt_count + 1,
     last_attempt_at = $2
 FROM due
@@ -315,8 +321,9 @@ RETURNING ie.event_type, ie.source, ie.event_id, ie.schema_version, ie.status, i
 	rows, err := tx.QueryContext(ctx, leaseQuery,
 		domain.IngestEventStatusRetryScheduled,
 		now,
-		limit,
 		domain.IngestEventStatusProcessing,
+		staleBefore,
+		limit,
 	)
 	if err != nil {
 		_ = tx.Rollback()
