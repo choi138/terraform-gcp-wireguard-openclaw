@@ -77,6 +77,7 @@ func (s *Store) MarkEventCompleted(_ context.Context, key domain.EventKey, _ tim
 		return nil
 	}
 	event.Status = domain.IngestEventStatusCompleted
+	event.LastError = ""
 	event.NextRetryAt = time.Time{}
 	s.ingestEvents[ingestKey(key.Source, key.EventID)] = event
 	return nil
@@ -99,6 +100,7 @@ func (s *Store) RecordEventFailure(_ context.Context, key domain.EventKey, lastE
 
 	if nextRetryAt.IsZero() || event.AttemptCount >= maxAttempts {
 		event.Status = domain.IngestEventStatusDeadLetter
+		event.LastError = lastError
 		event.NextRetryAt = time.Time{}
 		s.ingestEvents[ingestKey] = event
 		result.Outcome = domain.IngestOutcomeDeadLetter
@@ -106,6 +108,7 @@ func (s *Store) RecordEventFailure(_ context.Context, key domain.EventKey, lastE
 	}
 
 	event.Status = domain.IngestEventStatusRetryScheduled
+	event.LastError = lastError
 	event.NextRetryAt = nextRetryAt.UTC()
 	s.ingestEvents[ingestKey] = event
 	result.Outcome = domain.IngestOutcomeRetryScheduled

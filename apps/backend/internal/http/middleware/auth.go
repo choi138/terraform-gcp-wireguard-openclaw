@@ -21,6 +21,11 @@ func ActorFromContext(ctx context.Context) string {
 }
 
 func WithBearerAuth(next http.Handler, token, actor string) http.Handler {
+	effectiveActor := actor
+	if effectiveActor == "" {
+		effectiveActor = "admin"
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if token == "" {
 			writeAuthError(w, http.StatusUnauthorized, "bearer token is not configured")
@@ -39,10 +44,7 @@ func WithBearerAuth(next http.Handler, token, actor string) http.Handler {
 			return
 		}
 
-		if actor == "" {
-			actor = "admin"
-		}
-		ctx := context.WithValue(r.Context(), actorKey, actor)
+		ctx := context.WithValue(r.Context(), actorKey, effectiveActor)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

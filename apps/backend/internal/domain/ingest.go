@@ -113,6 +113,7 @@ type IngestEventRecord struct {
 	SchemaVersion int       `json:"schema_version"`
 	Status        string    `json:"status"`
 	Payload       []byte    `json:"-"`
+	LastError     string    `json:"last_error,omitempty"`
 	AttemptCount  int       `json:"attempt_count"`
 	FirstSeenAt   time.Time `json:"first_seen_at"`
 	LastAttemptAt time.Time `json:"last_attempt_at"`

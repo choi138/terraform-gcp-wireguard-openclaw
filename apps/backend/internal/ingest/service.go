@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/choegeun-won/terraform-gcp-wireguard-openclaw/apps/backend/internal/domain"
@@ -15,6 +16,7 @@ const (
 	EventTypeConversation   = "conversation_event"
 	EventTypeInfraSnapshot  = "infra_snapshot"
 	EventTypeRequestAttempt = "request_attempt"
+	completionRetryPrefix   = "mark event completed: "
 )
 
 type Repository interface {
@@ -172,7 +174,14 @@ func (s *Service) ingest(ctx context.Context, key domain.EventKey, schemaVersion
 	}
 
 	if err := s.repo.MarkEventCompleted(ctx, key, now); err != nil {
-		return domain.IngestResult{}, err
+		result, completionErr := s.handleCompletionFailure(ctx, key, stored.AttemptCount, err)
+		if completionErr != nil {
+			return domain.IngestResult{}, completionErr
+		}
+		if result.Outcome == domain.IngestOutcomeRetryScheduled || result.Outcome == domain.IngestOutcomeDeadLetter {
+			return result, nil
+		}
+		return result, err
 	}
 
 	return domain.IngestResult{
@@ -183,6 +192,10 @@ func (s *Service) ingest(ctx context.Context, key domain.EventKey, schemaVersion
 }
 
 func (s *Service) processLeasedEvent(ctx context.Context, event domain.IngestEventRecord) error {
+	if isCompletionRetry(event) {
+		return s.retryCompletionOnly(ctx, event)
+	}
+
 	var persistErr error
 
 	switch event.EventType {
@@ -226,7 +239,7 @@ func (s *Service) processLeasedEvent(ctx context.Context, event domain.IngestEve
 		}
 	}
 
-	return s.repo.MarkEventCompleted(ctx, event.EventKey, s.now())
+	return s.completeLeasedEvent(ctx, event)
 }
 
 func (s *Service) handleFailure(ctx context.Context, key domain.EventKey, attemptCount int, err error) (domain.IngestResult, error) {
@@ -239,6 +252,37 @@ func (s *Service) handleFailure(ctx context.Context, key domain.EventKey, attemp
 		return domain.IngestResult{}, recordErr
 	}
 	return result, nil
+}
+
+func (s *Service) handleCompletionFailure(ctx context.Context, key domain.EventKey, attemptCount int, err error) (domain.IngestResult, error) {
+	return s.handleFailure(ctx, key, attemptCount, fmt.Errorf("%s%w", completionRetryPrefix, err))
+}
+
+func (s *Service) retryCompletionOnly(ctx context.Context, event domain.IngestEventRecord) error {
+	return s.completeLeasedEvent(ctx, event)
+}
+
+func isCompletionRetry(event domain.IngestEventRecord) bool {
+	return strings.HasPrefix(event.LastError, completionRetryPrefix)
+}
+
+func (s *Service) completeLeasedEvent(ctx context.Context, event domain.IngestEventRecord) error {
+	if err := s.repo.MarkEventCompleted(ctx, event.EventKey, s.now()); err != nil {
+		result, completionErr := s.handleCompletionFailure(ctx, event.EventKey, event.AttemptCount, err)
+		if completionErr != nil {
+			return completionErr
+		}
+		switch result.Outcome {
+		case domain.IngestOutcomeRetryScheduled:
+			return errRetryScheduled
+		case domain.IngestOutcomeDeadLetter:
+			return errDeadLettered
+		default:
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (s *Service) backoffForAttempt(attemptCount int) time.Duration {

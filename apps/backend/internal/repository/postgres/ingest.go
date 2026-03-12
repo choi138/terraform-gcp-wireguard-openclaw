@@ -20,11 +20,12 @@ INSERT INTO ingest_events (
 )
 VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9)
 ON CONFLICT (source, event_id) DO NOTHING
-RETURNING event_type, source, event_id, schema_version, status, attempt_count, first_seen_at, last_attempt_at, next_retry_at
+RETURNING event_type, source, event_id, schema_version, status, last_error, attempt_count, first_seen_at, last_attempt_at, next_retry_at
 `
 
 	var stored domain.IngestEventRecord
 	var nextRetryAt sql.NullTime
+	var lastError sql.NullString
 	err := s.db.QueryRowContext(
 		ctx,
 		insertQuery,
@@ -43,6 +44,7 @@ RETURNING event_type, source, event_id, schema_version, status, attempt_count, f
 		&stored.EventID,
 		&stored.SchemaVersion,
 		&stored.Status,
+		&lastError,
 		&stored.AttemptCount,
 		&stored.FirstSeenAt,
 		&stored.LastAttemptAt,
@@ -51,6 +53,9 @@ RETURNING event_type, source, event_id, schema_version, status, attempt_count, f
 	switch {
 	case err == nil:
 		stored.Payload = event.Payload
+		if lastError.Valid {
+			stored.LastError = lastError.String
+		}
 		if nextRetryAt.Valid {
 			stored.NextRetryAt = nextRetryAt.Time.UTC()
 		}
@@ -290,7 +295,7 @@ SET status = $4,
 FROM due
 WHERE ie.source = due.source
   AND ie.event_id = due.event_id
-RETURNING ie.event_type, ie.source, ie.event_id, ie.schema_version, ie.status, ie.payload_json, ie.attempt_count, ie.first_seen_at, ie.last_attempt_at, ie.next_retry_at
+RETURNING ie.event_type, ie.source, ie.event_id, ie.schema_version, ie.status, ie.payload_json, ie.last_error, ie.attempt_count, ie.first_seen_at, ie.last_attempt_at, ie.next_retry_at
 `
 
 	rows, err := tx.QueryContext(ctx, leaseQuery,
@@ -332,7 +337,7 @@ SELECT
   COUNT(*) FILTER (WHERE status = $3)::int AS dead_letter,
   COUNT(*) FILTER (WHERE status IN ($1, $2))::int AS queue_depth,
   COALESCE(MAX(EXTRACT(EPOCH FROM ($4 - first_seen_at))) FILTER (WHERE status IN ($1, $2)), 0)::float8 AS oldest_pending_age_seconds,
-  COALESCE(MAX(EXTRACT(EPOCH FROM ($4 - next_retry_at))) FILTER (WHERE status = $1 AND next_retry_at IS NOT NULL), 0)::float8 AS oldest_retry_age_seconds
+  COALESCE(MAX(GREATEST(EXTRACT(EPOCH FROM ($4 - next_retry_at)), 0)) FILTER (WHERE status = $1 AND next_retry_at IS NOT NULL), 0)::float8 AS oldest_retry_age_seconds
 FROM ingest_events
 `
 
@@ -430,7 +435,13 @@ WHERE source = $1 AND event_id = $2
 `
 	if includePayload {
 		query = `
-SELECT event_type, source, event_id, schema_version, status, payload_json, attempt_count, first_seen_at, last_attempt_at, next_retry_at
+SELECT event_type, source, event_id, schema_version, status, payload_json, last_error, attempt_count, first_seen_at, last_attempt_at, next_retry_at
+FROM ingest_events
+WHERE source = $1 AND event_id = $2
+`
+	} else {
+		query = `
+SELECT event_type, source, event_id, schema_version, status, last_error, attempt_count, first_seen_at, last_attempt_at, next_retry_at
 FROM ingest_events
 WHERE source = $1 AND event_id = $2
 `
@@ -449,6 +460,7 @@ func scanIngestEvent(scanner interface{ Scan(dest ...any) error }, includePayloa
 	var (
 		event       domain.IngestEventRecord
 		payload     []byte
+		lastError   sql.NullString
 		nextRetryAt sql.NullTime
 	)
 
@@ -460,6 +472,7 @@ func scanIngestEvent(scanner interface{ Scan(dest ...any) error }, includePayloa
 			&event.SchemaVersion,
 			&event.Status,
 			&payload,
+			&lastError,
 			&event.AttemptCount,
 			&event.FirstSeenAt,
 			&event.LastAttemptAt,
@@ -475,6 +488,7 @@ func scanIngestEvent(scanner interface{ Scan(dest ...any) error }, includePayloa
 			&event.EventID,
 			&event.SchemaVersion,
 			&event.Status,
+			&lastError,
 			&event.AttemptCount,
 			&event.FirstSeenAt,
 			&event.LastAttemptAt,
@@ -482,6 +496,9 @@ func scanIngestEvent(scanner interface{ Scan(dest ...any) error }, includePayloa
 		); err != nil {
 			return domain.IngestEventRecord{}, err
 		}
+	}
+	if lastError.Valid {
+		event.LastError = lastError.String
 	}
 	if nextRetryAt.Valid {
 		event.NextRetryAt = nextRetryAt.Time.UTC()
