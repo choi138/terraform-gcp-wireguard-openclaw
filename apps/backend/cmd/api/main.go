@@ -18,6 +18,7 @@ import (
 	"github.com/choegeun-won/terraform-gcp-wireguard-openclaw/apps/backend/internal/ingest"
 	"github.com/choegeun-won/terraform-gcp-wireguard-openclaw/apps/backend/internal/repository/memory"
 	"github.com/choegeun-won/terraform-gcp-wireguard-openclaw/apps/backend/internal/repository/postgres"
+	"github.com/choegeun-won/terraform-gcp-wireguard-openclaw/apps/backend/internal/retention"
 	"github.com/choegeun-won/terraform-gcp-wireguard-openclaw/apps/backend/internal/security"
 	"github.com/choegeun-won/terraform-gcp-wireguard-openclaw/apps/backend/internal/worker"
 )
@@ -31,7 +32,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	deps, ingestService, cleanup, err := buildDependencies(cfg)
+	deps, ingestService, retentionService, cleanup, err := buildDependencies(cfg)
 	if err != nil {
 		logger.Error("failed to initialize repositories", "error", err)
 		os.Exit(1)
@@ -46,6 +47,9 @@ func main() {
 		cfg.IngestRetryWorkerInterval,
 		cfg.IngestRetryBatchSize,
 	).Run(runtimeCtx)
+	if cfg.Retention.Enabled {
+		go worker.NewRetentionWorker(retentionService, logger, cfg.Retention.Interval).Run(runtimeCtx)
+	}
 
 	srv := &http.Server{
 		Addr:         cfg.Addr,
@@ -85,7 +89,7 @@ func main() {
 	logger.Info("server stopped")
 }
 
-func buildDependencies(cfg config.Config) (httpapi.Dependencies, *ingest.Service, func(), error) {
+func buildDependencies(cfg config.Config) (httpapi.Dependencies, *ingest.Service, *retention.Service, func(), error) {
 	if cfg.DatabaseDSN == "" {
 		store := memory.NewStore()
 		ingestService := ingest.NewService(store, ingest.Config{
@@ -94,6 +98,14 @@ func buildDependencies(cfg config.Config) (httpapi.Dependencies, *ingest.Service
 			RetryMaxAttempts: cfg.IngestRetryMaxAttempts,
 		})
 		securityService := security.NewService(store)
+		retentionService := retention.NewService(store, store, retention.Config{
+			DryRun:              cfg.Retention.DryRun,
+			MaxRowsPerRun:       cfg.Retention.MaxRowsPerRun,
+			RawMessageWindow:    cfg.Retention.RawMessageWindow,
+			AuditEventWindow:    cfg.Retention.AuditEventWindow,
+			InfraSnapshotWindow: cfg.Retention.InfraSnapshotWindow,
+			IngestEventWindow:   cfg.Retention.IngestEventWindow,
+		})
 		return httpapi.Dependencies{
 			Readiness:    store,
 			Dashboard:    store,
@@ -102,12 +114,12 @@ func buildDependencies(cfg config.Config) (httpapi.Dependencies, *ingest.Service
 			Security:     securityService,
 			Ingest:       ingestService,
 			Audit:        store,
-		}, ingestService, func() {}, nil
+		}, ingestService, retentionService, func() {}, nil
 	}
 
 	db, err := sql.Open(cfg.DatabaseDriver, cfg.DatabaseDSN)
 	if err != nil {
-		return httpapi.Dependencies{}, nil, nil, err
+		return httpapi.Dependencies{}, nil, nil, nil, err
 	}
 
 	db.SetMaxOpenConns(10)
@@ -121,6 +133,14 @@ func buildDependencies(cfg config.Config) (httpapi.Dependencies, *ingest.Service
 		RetryMaxAttempts: cfg.IngestRetryMaxAttempts,
 	})
 	securityService := security.NewService(store)
+	retentionService := retention.NewService(store, store, retention.Config{
+		DryRun:              cfg.Retention.DryRun,
+		MaxRowsPerRun:       cfg.Retention.MaxRowsPerRun,
+		RawMessageWindow:    cfg.Retention.RawMessageWindow,
+		AuditEventWindow:    cfg.Retention.AuditEventWindow,
+		InfraSnapshotWindow: cfg.Retention.InfraSnapshotWindow,
+		IngestEventWindow:   cfg.Retention.IngestEventWindow,
+	})
 	cleanup := func() {
 		_ = db.Close()
 	}
@@ -133,5 +153,5 @@ func buildDependencies(cfg config.Config) (httpapi.Dependencies, *ingest.Service
 		Security:     securityService,
 		Ingest:       ingestService,
 		Audit:        store,
-	}, ingestService, cleanup, nil
+	}, ingestService, retentionService, cleanup, nil
 }

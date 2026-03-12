@@ -16,14 +16,14 @@ type ReadAuditWriter interface {
 	InsertReadAudit(ctx context.Context, event domain.AuditEvent) error
 }
 
-type statusRecorder struct {
+type readAuditRecorder struct {
 	http.ResponseWriter
 	status int
 }
 
 var uuidPattern = regexp.MustCompile(`^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[1-5][a-fA-F0-9]{3}-[89abAB][a-fA-F0-9]{3}-[a-fA-F0-9]{12}$`)
 
-func (s *statusRecorder) WriteHeader(code int) {
+func (s *readAuditRecorder) WriteHeader(code int) {
 	s.status = code
 	s.ResponseWriter.WriteHeader(code)
 }
@@ -34,7 +34,7 @@ func WithReadAudit(next http.Handler, auditWriter ReadAuditWriter, logger *slog.
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		rec := &readAuditRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
 
 		if r.Method != http.MethodGet {

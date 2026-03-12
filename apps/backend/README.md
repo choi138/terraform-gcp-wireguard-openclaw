@@ -17,7 +17,7 @@ This directory contains the Go backend for internal Ops Console APIs.
 
 ## Environment variables
 - `OPS_API_ADDR` (default `:8080`)
-- `OPS_API_ADMIN_TOKEN` (required for protected routes)
+- `OPS_API_ADMIN_TOKEN` (required unless OIDC is configured)
 - `OPS_API_INGEST_TOKEN` (required for ingest routes; must differ from `OPS_API_ADMIN_TOKEN`)
 - `OPS_API_ALLOW_MEMORY_FALLBACK` (optional; default `false`)
 - `OPS_API_DB_DSN` (required unless `OPS_API_ALLOW_MEMORY_FALLBACK=true`)
@@ -31,6 +31,22 @@ This directory contains the Go backend for internal Ops Console APIs.
 - `OPS_API_INGEST_RETRY_MAX_ATTEMPTS` (default `5`)
 - `OPS_API_INGEST_RETRY_WORKER_INTERVAL_MS` (default `1000`)
 - `OPS_API_INGEST_RETRY_BATCH_SIZE` (default `20`)
+- `OPS_API_OIDC_ISSUER`, `OPS_API_OIDC_AUDIENCE`, `OPS_API_OIDC_JWKS_URL` (enable operator OIDC mode)
+- `OPS_API_OIDC_ROLES_CLAIM` (default `roles`)
+- `OPS_API_OIDC_SUBJECT_CLAIM` (default `sub`)
+- `OPS_API_OIDC_CLOCK_SKEW_SEC` (default `60`)
+- `OPS_API_ADMIN_TOKEN_COMPATIBILITY` (optional coexistence switch for legacy admin token)
+- `OPS_API_BREAK_GLASS_*` (optional emergency token controls; requires OIDC)
+- `OPS_API_TRACE_EXPORTER` (`stdout` or `none`)
+- `OPS_API_TRACE_SAMPLE_RATE` (default `0.1`)
+- `OPS_API_TRACE_SERVICE_NAME` (default `ops-api`)
+- `OPS_API_RETENTION_ENABLED`, `OPS_API_RETENTION_DRY_RUN`
+- `OPS_API_RETENTION_INTERVAL_SEC`, `OPS_API_RETENTION_MAX_ROWS_PER_RUN`
+- `OPS_API_RETENTION_MIN_WINDOW_HOURS`
+- `OPS_API_RETENTION_RAW_MESSAGE_HOURS`
+- `OPS_API_RETENTION_AUDIT_EVENT_HOURS`
+- `OPS_API_RETENTION_INFRA_SNAPSHOT_HOURS`
+- `OPS_API_RETENTION_INGEST_EVENT_HOURS`
 
 ### .env usage
 1) Create local env file:
@@ -53,6 +69,26 @@ go run ./cmd/api
 
 Use memory mode only for local smoke tests. In normal environments, leave
 `OPS_API_ALLOW_MEMORY_FALLBACK` unset and provide `OPS_API_DB_DSN`.
+
+## Operator access modes
+
+- Legacy mode: `OPS_API_ADMIN_TOKEN` protects operator routes.
+- OIDC mode: configure issuer, audience, and JWKS URL; operator roles are `viewer`, `auditor`, and `admin`.
+- `OPS_API_INGEST_TOKEN` remains a distinct `ingest` service principal for producer-only routes.
+
+Role matrix:
+
+- `viewer`: dashboard, conversations, infra, ingest status, `/metrics`
+- `auditor`: viewer access plus `GET /v1/security/findings`
+- `admin`: all operator routes including `POST /v1/security/analyze-tfvars`
+
+When OIDC is enabled:
+
+- plain bearer tokens are rejected on operator routes by default
+- `OPS_API_ADMIN_TOKEN_COMPATIBILITY=true` keeps the legacy admin token active during migration
+- break-glass access can be enabled explicitly with `OPS_API_BREAK_GLASS_*`
+
+Every successful break-glass request writes an `auth.break_glass` audit event.
 
 ## Commands
 ```bash
@@ -116,15 +152,16 @@ Example:
 
 - Transient persistence failures are scheduled with bounded exponential backoff.
 - Events that exhaust `OPS_API_INGEST_RETRY_MAX_ATTEMPTS` move to a dead-letter state.
-- Operators can inspect queue depth, retry lag, and dead-letter counters via `GET /v1/ingest/status` with the admin token.
+- Operators can inspect queue depth, retry lag, and dead-letter counters via `GET /v1/ingest/status`.
 
 ## Tfvars security analysis
 
-The API provides an internal admin-only tfvars analysis workflow:
+The API provides an internal tfvars analysis workflow:
 
 - `POST /v1/security/analyze-tfvars`: analyze a tfvars JSON payload, return normalized findings, and upsert persisted lifecycle records.
 - `GET /v1/security/findings`: read persisted findings with status/severity filtering, pagination, and ordering.
-- Both routes require `Authorization: Bearer <OPS_API_ADMIN_TOKEN>`. Missing or wrong tokens return `401 Unauthorized`.
+- `POST /v1/security/analyze-tfvars` requires `admin`.
+- `GET /v1/security/findings` requires `auditor` or `admin`.
 
 Example request:
 
@@ -185,8 +222,19 @@ New findings are persisted with lifecycle state `open`. Existing findings keep t
 ### Audit and redaction behavior
 
 - `POST /v1/security/analyze-tfvars` writes an audit event with action `security.analyze`.
-- `GET /v1/security/findings` writes a standard read-audit event through the existing admin read middleware.
+- `GET /v1/security/findings` writes a standard read-audit event through the protected read middleware.
 - Raw sensitive tfvars values are not persisted in finding titles, descriptions, or metadata. Secret references are masked before storage and response serialization.
+
+## Observability and retention
+
+- `GET /metrics` is available for authenticated internal observers with `viewer`, `auditor`, or `admin` access.
+- Metrics include request volume, request errors, request latency histogram, ingest queue depth, retry lag, and service-up state.
+- Structured request logs include `request_id`, `principal_id`, `path`, `latency_ms`, `status`, and `error_code`.
+- Trace spans are emitted according to `OPS_API_TRACE_EXPORTER` and `OPS_API_TRACE_SAMPLE_RATE`.
+- The retention worker compacts raw message payloads and deletes aged audit, infra snapshot, and ingest-event records on a schedule.
+- Enable retention in dry-run mode first, review `retention.run` audit events, then switch to enforcement mode.
+
+Operational rollout and verification guidance lives in `docs/operations.md`.
 
 ## Throughput validation
 

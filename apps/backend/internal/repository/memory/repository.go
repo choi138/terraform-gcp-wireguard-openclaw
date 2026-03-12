@@ -19,6 +19,7 @@ type Store struct {
 	snapshots                    []domain.InfraSnapshot
 	audits                       []domain.AuditEvent
 	securityFindings             []domain.SecurityFinding
+	messageRawPayload            map[int64][]byte
 	nextAccountID                int64
 	nextConversationID           int64
 	nextMessageID                int64
@@ -83,6 +84,7 @@ func NewStore() *Store {
 		snapshots:                    []domain.InfraSnapshot{snapshot},
 		audits:                       make([]domain.AuditEvent, 0),
 		securityFindings:             make([]domain.SecurityFinding, 0),
+		messageRawPayload:            map[int64][]byte{1: []byte("seed-raw-payload")},
 		nextAccountID:                1002,
 		nextConversationID:           2,
 		nextMessageID:                2,

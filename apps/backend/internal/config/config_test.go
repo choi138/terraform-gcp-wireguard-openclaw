@@ -116,3 +116,66 @@ func TestLoadFromEnvRejectsWhitespaceOnlyTokens(t *testing.T) {
 		t.Fatal("expected whitespace-only tokens to fail")
 	}
 }
+
+func TestLoadFromEnvAllowsOIDCWithoutAdminToken(t *testing.T) {
+	t.Setenv("OPS_API_ADMIN_TOKEN", "")
+	t.Setenv("OPS_API_INGEST_TOKEN", "ingest-token")
+	t.Setenv("OPS_API_ALLOW_MEMORY_FALLBACK", "true")
+	t.Setenv("OPS_API_DB_DSN", "")
+	t.Setenv("OPS_API_OIDC_ISSUER", "https://issuer.example.com")
+	t.Setenv("OPS_API_OIDC_AUDIENCE", "ops-api")
+	t.Setenv("OPS_API_OIDC_JWKS_URL", "https://issuer.example.com/jwks")
+
+	cfg, err := LoadFromEnv()
+	if err != nil {
+		t.Fatalf("expected OIDC-only config to load, got %v", err)
+	}
+	if !cfg.OIDC.Enabled() {
+		t.Fatal("expected OIDC to be enabled")
+	}
+}
+
+func TestLoadFromEnvRejectsBreakGlassWithoutOIDC(t *testing.T) {
+	t.Setenv("OPS_API_ADMIN_TOKEN", "admin-token")
+	t.Setenv("OPS_API_INGEST_TOKEN", "ingest-token")
+	t.Setenv("OPS_API_ALLOW_MEMORY_FALLBACK", "true")
+	t.Setenv("OPS_API_DB_DSN", "")
+	t.Setenv("OPS_API_BREAK_GLASS_ENABLED", "true")
+	t.Setenv("OPS_API_BREAK_GLASS_TOKEN", "break-glass")
+	t.Setenv("OPS_API_BREAK_GLASS_ROLE", "admin")
+	t.Setenv("OPS_API_BREAK_GLASS_ALLOWED_PATHS", "/v1/security")
+	t.Setenv("OPS_API_BREAK_GLASS_EXPIRES_AT", "2026-03-12T12:00:00Z")
+
+	_, err := LoadFromEnv()
+	if err == nil {
+		t.Fatal("expected break-glass without OIDC to fail")
+	}
+}
+
+func TestLoadFromEnvRejectsTraceExporterOutsideAllowlist(t *testing.T) {
+	t.Setenv("OPS_API_ADMIN_TOKEN", "admin-token")
+	t.Setenv("OPS_API_INGEST_TOKEN", "ingest-token")
+	t.Setenv("OPS_API_ALLOW_MEMORY_FALLBACK", "true")
+	t.Setenv("OPS_API_DB_DSN", "")
+	t.Setenv("OPS_API_TRACE_EXPORTER", "otlp")
+
+	_, err := LoadFromEnv()
+	if err == nil {
+		t.Fatal("expected unsupported trace exporter to fail")
+	}
+}
+
+func TestLoadFromEnvRejectsRetentionWindowBelowMinimum(t *testing.T) {
+	t.Setenv("OPS_API_ADMIN_TOKEN", "admin-token")
+	t.Setenv("OPS_API_INGEST_TOKEN", "ingest-token")
+	t.Setenv("OPS_API_ALLOW_MEMORY_FALLBACK", "true")
+	t.Setenv("OPS_API_DB_DSN", "")
+	t.Setenv("OPS_API_RETENTION_ENABLED", "true")
+	t.Setenv("OPS_API_RETENTION_MIN_WINDOW_HOURS", "48")
+	t.Setenv("OPS_API_RETENTION_RAW_MESSAGE_HOURS", "24")
+
+	_, err := LoadFromEnv()
+	if err == nil {
+		t.Fatal("expected too-small retention window to fail")
+	}
+}

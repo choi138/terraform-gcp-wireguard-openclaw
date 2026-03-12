@@ -126,15 +126,16 @@ pre-commit run --all-files
 
 ## Backend Summary
 - Runtime: Go `1.26.0`
-- Protected routes require `OPS_API_ADMIN_TOKEN`
+- Operator routes support legacy admin token mode or OIDC roles (`viewer`, `auditor`, `admin`)
 - Internal ingest writes use a distinct `OPS_API_INGEST_TOKEN` and support conversation, infra snapshot, and request-attempt ingestion
-- Admin-only tfvars security analysis is available through `POST /v1/security/analyze-tfvars` and `GET /v1/security/findings`
+- Tfvars security analysis is available through `POST /v1/security/analyze-tfvars` and `GET /v1/security/findings`
 - Database-backed mode uses `OPS_API_DB_DSN`
 - Read APIs include dashboard, conversations, messages, attempts, and infra snapshots
 - Authenticated reads are audited
+- Protected `/metrics`, structured request logging, trace emission, break-glass fallback, and retention worker support are available
 - OpenAPI contract lives in `apps/backend/api/openapi.yaml`
 
-See `apps/backend/README.md` for backend-only commands and environment details.
+See `apps/backend/README.md` for backend-only commands and environment details, and `apps/backend/docs/operations.md` for the operational runbook.
 
 ## Required Terraform Variables
 - `project_id`, `region`, `zone`
